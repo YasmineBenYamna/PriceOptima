@@ -1,20 +1,14 @@
 // src/pages/StrategyConfigurationPage.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   getStrategies, getRules, getStrategy, getUserStrategy,
   createUserStrategy,
 } from '../api/api.js';
 import {
   C, R, S,
-  Button,
-  Alert,
-  EmptyState,
-  PageSpinner,
-  SectionLabel,
-  Breadcrumb,
-  Field,
-  Stepper,
+  Button, Alert, EmptyState, PageSpinner,
+  SectionLabel, Breadcrumb, Field, Stepper,
   Modal, ModalHeader,
 } from '../components/ui/index.js';
 import { WorkflowFooter } from '../components/ui/WorkflowFooter.jsx';
@@ -68,7 +62,6 @@ const LightningIcon = () => (
   </svg>
 );
 
-// ─── Modal nom + description ──────────────────────────────────────────────────
 function NameStrategyModal({ onClose, onConfirm, saving }) {
   const [name,        setName]        = useState('');
   const [description, setDescription] = useState('');
@@ -121,10 +114,24 @@ function NameStrategyModal({ onClose, onConfirm, saving }) {
   );
 }
 
-// ─── Page principale ──────────────────────────────────────────────────────────
 export default function StrategyConfigurationPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const rulesRef = useRef(null);
+
+  // ── Scope transmis depuis ProductScopePage ──────────────────────────────────
+  const scopeType       = location.state?.scopeType  || null;
+  const scopeEans       = location.state?.eans        || [];
+  const scopeCategories = location.state?.categories  || [];
+  const scopeBrands     = location.state?.brands      || [];
+
+  // Objet réutilisable pour les navigate
+  const scopeState = {
+    scopeType,
+    eans:       scopeEans,
+    categories: scopeCategories,
+    brands:     scopeBrands,
+  };
 
   const [strategies,    setStrategies]    = useState([]);
   const [allRules,      setAllRules]      = useState([]);
@@ -134,8 +141,6 @@ export default function StrategyConfigurationPage() {
   const [saving,        setSaving]        = useState(false);
   const [error,         setError]         = useState('');
   const [showNameModal, setShowNameModal] = useState(false);
-
-  // Sélection CUSTOM — juste un Set d'ids, pas de coefficients ici
   const [customSelected, setCustomSelected] = useState(new Set());
 
   useEffect(() => {
@@ -148,13 +153,13 @@ export default function StrategyConfigurationPage() {
       .catch((e) => { setError(e.message); setLoading(false); });
   }, []);
 
-  const selectedStrategy      = strategies.find((s) => s.id === selectedId);
-  const isNewCustom           = selectedStrategy && selectedStrategy.name?.toUpperCase() === 'CUSTOM' && !selectedStrategy.is_custom;
+  const selectedStrategy       = strategies.find((s) => s.id === selectedId);
+  const isNewCustom            = selectedStrategy &&
+                                  selectedStrategy.name?.toUpperCase() === 'CUSTOM' &&
+                                  !selectedStrategy.is_custom;
   const isExistingUserStrategy = selectedStrategy?.is_custom === true;
 
-  const isValid = isNewCustom
-    ? customSelected.size > 0
-    : !!selectedId;
+  const isValid = isNewCustom ? customSelected.size > 0 : !!selectedId;
 
   const selectStrategy = async (id) => {
     if (selectedId === id) { setSelectedId(null); setDetail(null); setCustomSelected(new Set()); return; }
@@ -181,11 +186,11 @@ export default function StrategyConfigurationPage() {
       setShowNameModal(true);
     } else if (isExistingUserStrategy) {
       navigate(`/pricing-rules/configure/${selectedStrategy.id}`, {
-        state: { user_strategy_id: selectedStrategy.id }
+        state: { user_strategy_id: selectedStrategy.id, ...scopeState }
       });
     } else {
       navigate(`/pricing-rules/configure/${selectedStrategy.id}`, {
-        state: { system_strategy_id: selectedStrategy.id }
+        state: { system_strategy_id: selectedStrategy.id, ...scopeState }
       });
     }
   };
@@ -193,10 +198,9 @@ export default function StrategyConfigurationPage() {
   const handleCreateCustom = async (name, description) => {
     setSaving(true); setError('');
     try {
-      // Coefficient par défaut = 1/n réparti équitablement
-      const ids   = [...customSelected];
-      const base  = Math.floor((1 / ids.length) * 10000) / 10000;
-      let rem     = 1;
+      const ids  = [...customSelected];
+      const base = Math.floor((1 / ids.length) * 10000) / 10000;
+      let rem    = 1;
       const rules = ids.map((rule_id, i) => {
         const coeff = i === ids.length - 1 ? Math.round(rem * 10000) / 10000 : base;
         rem -= base;
@@ -210,7 +214,7 @@ export default function StrategyConfigurationPage() {
       });
       setShowNameModal(false);
       navigate(`/pricing-rules/configure/${created.id}`, {
-        state: { user_strategy_id: created.id }
+        state: { user_strategy_id: created.id, ...scopeState }
       });
     } catch (e) {
       setError(e.message);
@@ -274,7 +278,8 @@ export default function StrategyConfigurationPage() {
                     width: 20, height: 20, borderRadius: '50%',
                     background: C.accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFF"
+                      strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
                   </div>
@@ -329,12 +334,12 @@ export default function StrategyConfigurationPage() {
             </div>
             <p style={{ fontSize: 11, color: C.textMuted, margin: 0 }}>
               {isNewCustom
-                ? 'Cochez les règles à inclure — les coefficients seront configurés à l\'étape suivante.'
+                ? "Cochez les règles à inclure — les coefficients seront configurés à l'étape suivante."
                 : 'Rules included in this strategy — coefficients are configured in the next step.'}
             </p>
           </div>
 
-          {/* ── PRESET / user strategy existante ── */}
+          {/* PRESET / user strategy existante */}
           {!isNewCustom && (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12, marginBottom: 22 }}>
@@ -367,10 +372,9 @@ export default function StrategyConfigurationPage() {
             </>
           )}
 
-          {/* ── CUSTOM (nouveau) : checkboxes seulement, pas de coefficients ── */}
+          {/* CUSTOM : checkboxes seulement */}
           {isNewCustom && (
             <>
-              {/* Summary */}
               <div style={{
                 background: customSelected.size > 0 ? '#F0FDF4' : C.surface,
                 border: `1.5px solid ${customSelected.size > 0 ? '#86EFAC' : C.border}`,
@@ -383,7 +387,6 @@ export default function StrategyConfigurationPage() {
                 </div>
               </div>
 
-              {/* System rules */}
               <div style={{ fontSize: 10, fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.08em', paddingLeft: 2, marginBottom: 8 }}>
                 System rules
               </div>
@@ -398,7 +401,6 @@ export default function StrategyConfigurationPage() {
                 ))}
               </div>
 
-              {/* My custom rules */}
               {allRules.some(r => r.source === 'user') && (
                 <>
                   <div style={{ fontSize: 10, fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.08em', paddingLeft: 2, marginBottom: 8, marginTop: 8 }}>
@@ -449,7 +451,7 @@ export default function StrategyConfigurationPage() {
   );
 }
 
-// ─── Card rule avec checkbox seulement (pas de coefficient) ───────────────────
+// ─── Card rule avec checkbox ──────────────────────────────────────────────────
 function RuleCheckCard({ rule, badge, selected, onToggle, isUserRule }) {
   return (
     <div onClick={onToggle} style={{

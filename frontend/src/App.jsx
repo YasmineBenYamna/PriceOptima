@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 import Sidebar from './components/layout/Sidebar.jsx';
 
+import LandingPage from './pages/LandingPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import ProductScopePage from './pages/ProductScopePage.jsx';
 import StrategyConfigurationPage from './pages/StrategyConfigurationPage.jsx';
@@ -20,14 +21,7 @@ function AppLayout({ children }) {
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: C.bg }}>
       <div style={{ display: 'flex', flex: 1 }}>
         <Sidebar />
-        <main
-          style={{
-            flex: 1,
-            padding: '28px 32px',
-            overflowY: 'auto',
-            minWidth: 0,
-          }}
-        >
+        <main style={{ flex: 1, padding: '28px 32px', overflowY: 'auto', minWidth: 0 }}>
           {children}
         </main>
       </div>
@@ -45,11 +39,12 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Première page — Landing */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/landing" element={<LandingPage />} />
+
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
-
-        {/* Redirect root */}
-        <Route path="/" element={<Navigate to="/pricing-rules/scope" replace />} />
 
         {/* Protected — avec layout */}
         <Route
@@ -86,7 +81,7 @@ export default function App() {
         />
 
         {/* Fallback */}
-        <Route path="*" element={<Navigate to="/pricing-rules/scope" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

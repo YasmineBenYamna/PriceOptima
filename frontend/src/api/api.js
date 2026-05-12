@@ -1,7 +1,8 @@
 // src/api/api.js
 // Aligned with Data Pricer API v3.0.0
 
-const BASE_URL = '/api/v1';
+const BASE_URL      = '/api/v1';
+const BASE_URL_AUTH = '/api/v1/auth';  // ← sera redirigé vers /auth/ par nginx
 const USE_MOCK = false; // ← false quand le vrai backend est prêt
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -18,7 +19,7 @@ function authHeaders() {
 // ─── Mock Data ───────────────────────────────────────────────────────────────
 
 const MOCK_USERS = [
-  { id: 'user_001', full_name: 'Yasmine Ben Yamna', company_name: 'RetailLab', work_mail: 'yasmine@example.com', password: 'StrongPassword123!' },
+  { id: 'user_001', full_name: 'Yasmine Ben Yamna', company_name: 'RetailLab', workmail: 'yasmine@example.com', password: 'StrongPassword123!' },
 ];
 
 const MOCK_RULES = [
@@ -293,17 +294,33 @@ async function request(method, path, body, queryParams) {
   return data;
 }
 
+
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
-export async function register(body) {
-  const data = await request('POST', '/auth/register', body);
-  if (data?.access_token) localStorage.setItem('access_token', data.access_token);
+export async function login(body) {
+  const data = await request('POST', '/auth/login', {
+    work_mail: body.work_mail || body.work_mail,
+    password:  body.password
+  });
+  if (data?.access_token) {
+    localStorage.setItem('access_token', data.access_token);
+    localStorage.setItem('accesstoken', data.access_token);
+  }
   return data;
 }
 
-export async function login(body) {
-  const data = await request('POST', '/auth/login', body);
-  if (data?.access_token) localStorage.setItem('access_token', data.access_token);
+export async function register(body) {
+  const data = await request('POST', '/auth/register', {
+    full_name:    body.full_name,
+    work_mail:    body.work_mail || body.work_mail,
+    company_name: body.company_name,
+    password:     body.password
+  });
+  if (data?.access_token) {
+    localStorage.setItem('access_token', data.access_token);
+    localStorage.setItem('accesstoken', data.access_token);
+  }
   return data;
 }
 

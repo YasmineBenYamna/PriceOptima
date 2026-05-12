@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 export function useRequireAuth() {
   const navigate = useNavigate();
   useEffect(() => {
-    const token = localStorage.getItem('accesstoken');
+    const token = localStorage.getItem('access_token');
     if (!token) {
       navigate('/login', { replace: true });
     }

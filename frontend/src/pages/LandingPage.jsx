@@ -1,10 +1,7 @@
+// src/pages/LandingPage.jsx
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-/* ─────────────────────────────────────────────
-   Design tokens — injected as a <style> block
-   so they live in :root and are consistent with
-   any global CSS you already have.
-───────────────────────────────────────────── */
 const GLOBAL_STYLES = `
   :root {
     --color-bg:              #f5f4f0;
@@ -64,10 +61,7 @@ const GLOBAL_STYLES = `
     --shadow-md: 0 4px 16px rgba(0,0,0,.35);
     --shadow-lg: 0 16px 48px rgba(0,0,0,.50);
   }
-
-  /* Google Fonts */
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..800&family=Sora:wght@400;600;700;800&display=swap');
-
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { -webkit-font-smoothing: antialiased; scroll-behavior: smooth; scroll-padding-top: 80px; }
   body {
@@ -86,23 +80,18 @@ const GLOBAL_STYLES = `
   h1,h2,h3,h4 { text-wrap: balance; line-height: 1.15; font-family: var(--font-display); }
   ::selection { background: rgba(212,132,90,.25); color: var(--color-text); }
   :focus-visible { outline: 2px solid var(--color-orange); outline-offset: 3px; border-radius: var(--radius-sm); }
-
-  /* Scroll reveal */
   .reveal { opacity: 0; transform: translateY(20px); transition: opacity .6s ease, transform .6s ease; }
   .reveal.visible { opacity: 1; transform: none; }
-
-  /* Pulse dot */
   @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(1.3)} }
-
-  /* Chart bars hover */
   .chart-bar:hover { opacity: .8; }
 `;
 
-/* ─── Helpers ─────────────────────────────── */
 function useReveal() {
   useEffect(() => {
     const obs = new IntersectionObserver(
-      (entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("visible"); obs.unobserve(e.target); } }),
+      (entries) => entries.forEach((e) => {
+        if (e.isIntersecting) { e.target.classList.add("visible"); obs.unobserve(e.target); }
+      }),
       { threshold: 0.1, rootMargin: "0px 0px -40px 0px" }
     );
     document.querySelectorAll(".reveal").forEach((el) => obs.observe(el));
@@ -115,16 +104,14 @@ function animateCount(el, target, suffix = "") {
   const duration = 1800;
   const step = (ts) => {
     if (!start) start = ts;
-    const p = Math.min((ts - start) / duration, 1);
+    const p    = Math.min((ts - start) / duration, 1);
     const ease = 1 - Math.pow(1 - p, 4);
-    const val = suffix === "%" ? Math.round(ease * target) : Math.round(ease * target).toLocaleString("en");
+    const val  = suffix === "%" ? Math.round(ease * target) : Math.round(ease * target).toLocaleString("en");
     el.textContent = (suffix === "+" ? "+" : "") + val + (suffix === "%" ? "%" : suffix === "+" ? "" : suffix);
     if (p < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
 }
-
-/* ─── Sub-components ───────────────────────── */
 
 function LogoIcon({ size = 34 }) {
   return (
@@ -172,15 +159,21 @@ function Navbar({ theme, onToggle, onNavigate }) {
     }}>
       <div style={{ maxWidth: 1160, marginInline: "auto", paddingInline: "clamp(1rem,4vw,3rem)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
-          <a href="#" aria-label="PriceOptima home" style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "1.1rem", letterSpacing: "-0.025em", color: "var(--color-text)" }}>
+          <a href="#" aria-label="PriceOptima home" style={{
+            display: "flex", alignItems: "center", gap: "var(--space-3)",
+            fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "1.1rem",
+            letterSpacing: "-0.025em", color: "var(--color-text)",
+          }}>
             <LogoIcon size={34} />
             Price<span style={{ color: "var(--color-orange)" }}>Optima</span>
           </a>
 
-          <nav aria-label="Main links" style={{ display: "flex", alignItems: "center", gap: "var(--space-8)" }}
-            className="nav-links-desktop">
+          <nav aria-label="Main links" style={{ display: "flex", alignItems: "center", gap: "var(--space-8)" }}>
             {[["#features", "Features"], ["#how", "How It Works"]].map(([href, label]) => (
-              <a key={href} href={href} style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", fontWeight: 500, transition: "color .18s" }}
+              <a key={href} href={href} style={{
+                fontSize: "var(--text-sm)", color: "var(--color-text-muted)",
+                fontWeight: 500, transition: "color .18s",
+              }}
                 onMouseEnter={e => e.target.style.color = "var(--color-text)"}
                 onMouseLeave={e => e.target.style.color = "var(--color-text-muted)"}
               >{label}</a>
@@ -189,7 +182,7 @@ function Navbar({ theme, onToggle, onNavigate }) {
 
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
             <ThemeToggle theme={theme} onToggle={onToggle} />
-            <a href="#" style={{
+            <a href="#" onClick={onNavigate} style={{
               display: "inline-flex", alignItems: "center", gap: "var(--space-2)",
               padding: ".6em 1.3em", borderRadius: "var(--radius-md)",
               fontSize: "var(--text-sm)", fontWeight: 600,
@@ -210,11 +203,11 @@ function Navbar({ theme, onToggle, onNavigate }) {
 }
 
 function DashboardPreview() {
-  const bars = [40, 55, 45, 70, 60, 85, 75];
+  const bars  = [40, 55, 45, 70, 60, 85, 75];
   const rules = [
-    { dot: "#ef4444", name: "Competitor Beat Rule", coeff: "0.50" },
-    { dot: "var(--color-orange)", name: "Floor Price Rule", coeff: "0.30" },
-    { dot: "#22c55e", name: "Market Average Rule", coeff: "0.20" },
+    { dot: "#ef4444",              name: "Competitor Beat Rule", coeff: "0.50" },
+    { dot: "var(--color-orange)",  name: "Floor Price Rule",     coeff: "0.30" },
+    { dot: "#22c55e",              name: "Market Average Rule",  coeff: "0.20" },
   ];
   return (
     <div style={{
@@ -227,17 +220,14 @@ function DashboardPreview() {
       onMouseEnter={e => e.currentTarget.style.transform = "perspective(1200px) rotateY(-2deg) rotateX(1deg)"}
       onMouseLeave={e => e.currentTarget.style.transform = "perspective(1200px) rotateY(-6deg) rotateX(2deg)"}
     >
-      {/* header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-4)", paddingBottom: "var(--space-4)", borderBottom: "1px solid var(--color-divider)" }}>
         <span style={{ fontFamily: "var(--font-display)", fontSize: ".8rem", fontWeight: 700, color: "var(--color-text)" }}>AGGRESSIVE Strategy — Live view</span>
         <span style={{ fontSize: ".65rem", padding: ".2em .6em", borderRadius: "var(--radius-full)", background: "rgba(34,197,94,.15)", color: "#22c55e", fontWeight: 700 }}>● Active</span>
       </div>
-
-      {/* KPIs */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)", marginBottom: "var(--space-4)" }}>
         {[
-          { val: "€ 3.47", lbl: "Calculated price", delta: "▼ −2.1% vs market", up: false },
-          { val: "12", lbl: "Products processed", delta: "▲ +8 this month", up: true },
+          { val: "€ 3.47", lbl: "Calculated price",    delta: "▼ −2.1% vs market", up: false },
+          { val: "12",     lbl: "Products processed",  delta: "▲ +8 this month",   up: true  },
         ].map((k, i) => (
           <div key={i} style={{ background: "var(--color-surface-offset)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)" }}>
             <div style={{ fontFamily: "var(--font-display)", fontSize: "1.3rem", fontWeight: 800, letterSpacing: "-0.02em", color: i === 0 ? "var(--color-orange)" : "var(--color-text)" }}>{k.val}</div>
@@ -246,8 +236,6 @@ function DashboardPreview() {
           </div>
         ))}
       </div>
-
-      {/* Chart */}
       <div style={{ background: "var(--color-surface-offset)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)", marginBottom: "var(--space-3)" }}>
         <div style={{ fontSize: ".65rem", color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: "var(--space-3)" }}>Price trend — 7 days</div>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 54 }}>
@@ -259,8 +247,6 @@ function DashboardPreview() {
           ))}
         </div>
       </div>
-
-      {/* Rules */}
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
         {rules.map((r, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: ".5em var(--space-3)", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)" }}>
@@ -277,9 +263,8 @@ function DashboardPreview() {
 }
 
 function HeroStats() {
-  const ref = useRef(null);
+  const ref  = useRef(null);
   const nums = useRef([]);
-
   useEffect(() => {
     const targets = [{ val: 12000, suffix: "+" }, { val: 4, suffix: "" }, { val: 97, suffix: "%" }];
     const obs = new IntersectionObserver(([e]) => {
@@ -291,13 +276,7 @@ function HeroStats() {
     if (ref.current) obs.observe(ref.current);
     return () => obs.disconnect();
   }, []);
-
-  const stats = [
-    { label: "Products analyzed" },
-    { label: "Ready strategies" },
-    { label: "Price accuracy" },
-  ];
-
+  const stats = [{ label: "Products analyzed" }, { label: "Ready strategies" }, { label: "Price accuracy" }];
   return (
     <div ref={ref} role="list" style={{ display: "flex", gap: "var(--space-6)", marginTop: "var(--space-10)", paddingTop: "var(--space-8)", borderTop: "1px solid var(--color-divider)" }}>
       {stats.map((s, i) => (
@@ -314,8 +293,7 @@ function Hero({ onNavigate }) {
   return (
     <section aria-labelledby="hero-title" style={{ padding: "clamp(4rem,10vw,6rem) 0 clamp(3rem,8vw,5rem)", overflow: "hidden", position: "relative" }}>
       <div style={{ maxWidth: 1160, marginInline: "auto", paddingInline: "clamp(1rem,4vw,3rem)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-16)", alignItems: "center" }}
-          className="hero-grid">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-16)", alignItems: "center" }} className="hero-grid">
           <div>
             <div style={{
               display: "inline-flex", alignItems: "center", gap: "var(--space-2)",
@@ -327,15 +305,12 @@ function Hero({ onNavigate }) {
               <span style={{ width: 6, height: 6, borderRadius: "var(--radius-full)", background: "var(--color-orange)", animation: "pulse 2s ease infinite", display: "inline-block" }} aria-hidden="true" />
               Intelligent Pricing Platform
             </div>
-
             <h1 id="hero-title" style={{ fontSize: "var(--text-3xl)", fontWeight: 800, letterSpacing: "-0.04em", lineHeight: 1.1, marginBottom: "var(--space-6)" }}>
               Pricing driven<br />by <span style={{ color: "var(--color-orange)" }}>data</span>,<br />not intuition.
             </h1>
-
             <p style={{ fontSize: "var(--text-lg)", color: "var(--color-text-muted)", maxWidth: "52ch", marginBottom: "var(--space-8)", lineHeight: 1.7 }}>
               PriceOptima analyzes your competitors in real time and automatically applies your pricing strategies — rule by rule, product by product.
             </p>
-
             <div style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap" }}>
               <a href="#" onClick={onNavigate} style={{
                 display: "inline-flex", alignItems: "center", gap: "var(--space-2)",
@@ -350,26 +325,19 @@ function Hero({ onNavigate }) {
                 display: "inline-flex", alignItems: "center", gap: "var(--space-2)",
                 padding: ".7em 1.6em", borderRadius: "var(--radius-md)",
                 fontSize: "var(--text-base)", fontWeight: 600,
-                background: "transparent", color: "var(--color-text-muted)", border: "1px solid var(--color-border)", transition: "color .18s, border-color .18s",
+                background: "transparent", color: "var(--color-text-muted)",
+                border: "1px solid var(--color-border)", transition: "color .18s, border-color .18s",
               }}
                 onMouseEnter={e => { e.currentTarget.style.color = "var(--color-text)"; e.currentTarget.style.borderColor = "rgba(26,24,20,.3)"; }}
                 onMouseLeave={e => { e.currentTarget.style.color = "var(--color-text-muted)"; e.currentTarget.style.borderColor = "var(--color-border)"; }}
               >See how it works</a>
             </div>
-
             <HeroStats />
           </div>
-
-          <div aria-hidden="true">
-            <DashboardPreview />
-          </div>
+          <div aria-hidden="true"><DashboardPreview /></div>
         </div>
       </div>
-      <style>{`
-        @media(max-width:900px){
-          .hero-grid{ grid-template-columns:1fr !important; }
-        }
-      `}</style>
+      <style>{`@media(max-width:900px){ .hero-grid{ grid-template-columns:1fr !important; } }`}</style>
     </section>
   );
 }
@@ -377,30 +345,17 @@ function Hero({ onNavigate }) {
 function Features() {
   const feats = [
     {
-      icon: (
-        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-        </svg>
-      ),
+      icon: <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
       title: "Live Competitive Intelligence",
       desc: "Collect and analyze competitor prices from Open Prices and Open Food Facts in real time. Always stay ahead of market movements.",
     },
     {
-      icon: (
-        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2L2 7l10 15 10-15z" /><path d="M12 2v20M2 7l10 5 10-5" />
-        </svg>
-      ),
+      icon: <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 15 10-15z"/><path d="M12 2v20M2 7l10 5 10-5"/></svg>,
       title: "Modular Pricing Rules",
       desc: "Configure independent rules — Floor Price, Competitor Beat, Market Average, Min Store Price, Stability — and combine them with weighted coefficients.",
     },
     {
-      icon: (
-        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
-          <rect x="3" y="14" width="7" height="7" /><path d="M14 17h6M17 14v6" />
-        </svg>
-      ),
+      icon: <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 17h6M17 14v6"/></svg>,
       title: "Predefined & Custom Strategies",
       desc: "Choose from AGGRESSIVE, COMPETITIVE, ALIGNED presets or build your own strategy with custom rules and personalized coefficients.",
       large: true,
@@ -424,27 +379,12 @@ function Features() {
       ),
     },
     {
-      icon: (
-        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z" />
-          <path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
-          <path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z" />
-          <path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z" />
-          <path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z" />
-          <path d="M15.5 19H14v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z" />
-          <path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z" />
-          <path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z" />
-        </svg>
-      ),
+      icon: <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z"/><path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/><path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z"/><path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z"/><path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"/><path d="M15.5 19H14v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z"/><path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z"/><path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z"/></svg>,
       title: "Automated Airflow Pipeline",
       desc: "Apache Airflow DAGs orchestrate the entire chain — collection, SQLMesh transformation, price calculation — without any manual intervention.",
     },
     {
-      icon: (
-        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
-        </svg>
-      ),
+      icon: <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
       title: "Jobs & Calculation History",
       desc: "Track every calculation job — status, processed products, price variations, execution timeline — with a full history accessible at any time.",
     },
@@ -455,24 +395,22 @@ function Features() {
       <div style={{ maxWidth: 1160, marginInline: "auto", paddingInline: "clamp(1rem,4vw,3rem)" }}>
         <div className="reveal">
           <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "var(--color-orange)", marginBottom: "var(--space-4)" }}>Features</div>
-          <h2 className="section-title" id="feat-title" style={{ fontSize: "var(--text-2xl)", fontWeight: 800, letterSpacing: "-0.035em", lineHeight: 1.15, marginBottom: "var(--space-5)" }}>
+          <h2 id="feat-title" style={{ fontSize: "var(--text-2xl)", fontWeight: 800, letterSpacing: "-0.035em", lineHeight: 1.15, marginBottom: "var(--space-5)" }}>
             Everything you need<br />for competitive pricing.
           </h2>
           <p style={{ fontSize: "var(--text-base)", color: "var(--color-text-muted)", maxWidth: "58ch", lineHeight: 1.7 }}>
             A complete pipeline from competitor price collection to automatic optimal pricing calculation.
           </p>
         </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-6)", marginTop: "var(--space-12)" }} className="feat-grid">
           {feats.map((f, i) => (
-            <div key={i} className={`feat-card reveal${f.large ? " feat-large" : ""}`}
-              style={{
-                ...(f.large ? { gridColumn: "span 2" } : {}),
-                background: "var(--color-surface)", border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-xl)", padding: "var(--space-8)",
-                boxShadow: "var(--shadow-sm)", transition: "box-shadow .2s, transform .2s",
-                transitionDelay: `${i * 0.05}s`,
-              }}
+            <div key={i} className={`feat-card reveal${f.large ? " feat-large" : ""}`} style={{
+              ...(f.large ? { gridColumn: "span 2" } : {}),
+              background: "var(--color-surface)", border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-xl)", padding: "var(--space-8)",
+              boxShadow: "var(--shadow-sm)", transition: "box-shadow .2s, transform .2s",
+              transitionDelay: `${i * 0.05}s`,
+            }}
               onMouseEnter={e => { e.currentTarget.style.boxShadow = "var(--shadow-md)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
               onMouseLeave={e => { e.currentTarget.style.boxShadow = "var(--shadow-sm)"; e.currentTarget.style.transform = "none"; }}
             >
@@ -509,20 +447,18 @@ function Features() {
 
 function HowItWorks() {
   const steps = [
-    { num: "01", title: "Select your products", desc: "Search by EAN, brand, or category. Import your catalog from Open Food Facts or enter your EANs manually." },
-    { num: "02", title: "Configure a strategy", desc: "Select AGGRESSIVE, COMPETITIVE, ALIGNED, or create a CUSTOM strategy by adjusting the coefficients of each rule." },
-    { num: "03", title: "Launch the calculation", desc: "The pricing engine applies your rules, Airflow orchestrates execution, and you get your optimal prices — in seconds." },
+    { num: "01", title: "Select your products",    desc: "Search by EAN, brand, or category. Import your catalog from Open Food Facts or enter your EANs manually." },
+    { num: "02", title: "Configure a strategy",    desc: "Select AGGRESSIVE, COMPETITIVE, ALIGNED, or create a CUSTOM strategy by adjusting the coefficients of each rule." },
+    { num: "03", title: "Launch the calculation",  desc: "The pricing engine applies your rules, Airflow orchestrates execution, and you get your optimal prices — in seconds." },
   ];
-
   return (
     <section id="how" aria-labelledby="how-title" style={{ padding: "clamp(3rem,7vw,5rem) 0" }}>
       <div style={{ maxWidth: 760, marginInline: "auto", paddingInline: "clamp(1rem,4vw,3rem)" }}>
         <div className="reveal" style={{ textAlign: "center" }}>
-          <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "var(--color-orange)", marginBottom: "var(--space-4)", textAlign: "center" }}>How It Works</div>
+          <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "var(--color-orange)", marginBottom: "var(--space-4)" }}>How It Works</div>
           <h2 id="how-title" style={{ fontSize: "var(--text-2xl)", fontWeight: 800, letterSpacing: "-0.035em", lineHeight: 1.15, marginBottom: "var(--space-5)" }}>Simple. Powerful. Automatic.</h2>
-          <p style={{ fontSize: "var(--text-base)", color: "var(--color-text-muted)", marginInline: "auto", textAlign: "center", lineHeight: 1.7 }}>Three steps from raw data to the optimal price.</p>
+          <p style={{ fontSize: "var(--text-base)", color: "var(--color-text-muted)", lineHeight: 1.7 }}>Three steps from raw data to the optimal price.</p>
         </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "var(--space-6)", marginTop: "var(--space-12)" }} className="how-grid">
           {steps.map((s, i) => (
             <div key={i} className="reveal" style={{ position: "relative", padding: "var(--space-8) var(--space-6)", transitionDelay: `${i * 0.05}s` }}>
@@ -544,11 +480,8 @@ function CTASection({ onNavigate }) {
       <div style={{ maxWidth: 1160, marginInline: "auto", paddingInline: "clamp(1rem,4vw,3rem)" }}>
         <div className="reveal" style={{
           background: "linear-gradient(135deg,#1E3A5F 0%,#0f2040 100%)",
-          borderRadius: "var(--radius-2xl)",
-          padding: "clamp(2.5rem,6vw,4rem)",
-          textAlign: "center",
-          position: "relative",
-          overflow: "hidden",
+          borderRadius: "var(--radius-2xl)", padding: "clamp(2.5rem,6vw,4rem)",
+          textAlign: "center", position: "relative", overflow: "hidden",
         }}>
           <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 70% 50%, rgba(212,132,90,.2) 0%, transparent 60%)", pointerEvents: "none" }} />
           <h2 style={{ fontSize: "var(--text-2xl)", fontWeight: 800, color: "#fff", letterSpacing: "-0.035em", marginBottom: "var(--space-4)", position: "relative" }}>
@@ -559,7 +492,7 @@ function CTASection({ onNavigate }) {
           </p>
           <div style={{ display: "flex", justifyContent: "center", gap: "var(--space-3)", flexWrap: "wrap", position: "relative" }}>
             <a href="#" onClick={onNavigate} style={{ display: "inline-flex", alignItems: "center", padding: ".8em 2em", borderRadius: "var(--radius-md)", fontWeight: 600, fontSize: "var(--text-base)", background: "var(--color-orange)", color: "#fff" }}>
-              Get started for free
+              Get started now
             </a>
             <a href="#features" style={{ display: "inline-flex", alignItems: "center", padding: ".8em 2em", borderRadius: "var(--radius-md)", fontWeight: 600, fontSize: "var(--text-base)", background: "rgba(255,255,255,.12)", color: "#fff", border: "1px solid rgba(255,255,255,.2)" }}>
               Explore features
@@ -595,11 +528,12 @@ function Footer() {
   );
 }
 
-/* ─── Main Page ────────────────────────────── */
-export default function LandingPage({ onNavigate }) {
-  const [theme, setTheme] = useState(() => {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  });
+export default function LandingPage() {
+  const navigate = useNavigate();
+
+  const [theme, setTheme] = useState(() =>
+    window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+  );
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -609,13 +543,17 @@ export default function LandingPage({ onNavigate }) {
 
   const handleNavigate = (e) => {
     e?.preventDefault?.();
-    if (typeof onNavigate === "function") onNavigate();
+    navigate('/login');
   };
 
   return (
     <>
       <style>{GLOBAL_STYLES}</style>
-      <Navbar theme={theme} onToggle={() => setTheme(t => t === "dark" ? "light" : "dark")} onNavigate={handleNavigate} />
+      <Navbar
+        theme={theme}
+        onToggle={() => setTheme(t => t === "dark" ? "light" : "dark")}
+        onNavigate={handleNavigate}
+      />
       <main>
         <Hero onNavigate={handleNavigate} />
         <div style={{ height: 1, background: "var(--color-divider)" }} />

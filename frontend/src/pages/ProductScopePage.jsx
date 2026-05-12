@@ -5,35 +5,23 @@ import { C, R, S, Button, Card, Breadcrumb, Stepper } from '../components/ui/ind
 import { WorkflowFooter } from '../components/ui/WorkflowFooter.jsx';
 import { searchProducts, getCategories, getBrands } from '../api/api.js';
 
-// ─── Checkbox card (Category / Brand) ────────────────────────────────────────
 function SelectCard({ name, sub, selected, onClick }) {
   return (
-    <div
-      onClick={onClick}
-      style={{
-        display:    'flex',
-        alignItems: 'center',
-        gap:        12,
-        padding:    16,
-        borderRadius: R.lg,
-        border:     selected ? `2px solid ${C.accent}` : `1.5px solid ${C.border}`,
-        background: selected ? '#F0F7FF' : C.surface,
-        cursor:     'pointer',
-        boxShadow:  selected ? `0 0 0 3px rgba(164,60,18,0.08)` : S.card,
-        transition: 'all 0.15s',
-      }}
-    >
+    <div onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 12, padding: 16,
+      borderRadius: R.lg,
+      border:     selected ? `2px solid ${C.accent}` : `1.5px solid ${C.border}`,
+      background: selected ? '#F0F7FF' : C.surface,
+      cursor: 'pointer',
+      boxShadow: selected ? `0 0 0 3px rgba(164,60,18,0.08)` : S.card,
+      transition: 'all 0.15s',
+    }}>
       <div style={{
-        width:          18,
-        height:         18,
-        borderRadius:   5,
-        border:         `2px solid ${selected ? C.accent : C.border}`,
-        background:     selected ? C.accent : C.surface,
-        display:        'flex',
-        alignItems:     'center',
-        justifyContent: 'center',
-        flexShrink:     0,
-        transition:     'all 0.15s',
+        width: 18, height: 18, borderRadius: 5,
+        border: `2px solid ${selected ? C.accent : C.border}`,
+        background: selected ? C.accent : C.surface,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, transition: 'all 0.15s',
       }}>
         {selected && (
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
@@ -50,7 +38,6 @@ function SelectCard({ name, sub, selected, onClick }) {
   );
 }
 
-// ─── Icônes ───────────────────────────────────────────────────────────────────
 const IconUpload = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -60,7 +47,6 @@ const IconUpload = () => (
   </svg>
 );
 
-// ─── Hook utilitaire Set (candidat composant si réutilisé ailleurs) ───────────
 function useSet(initial = []) {
   const [set, setSet] = useState(new Set(initial));
   const toggle = (id) =>
@@ -72,14 +58,15 @@ function useSet(initial = []) {
   return [set, toggle];
 }
 
-// ─── Page principale ──────────────────────────────────────────────────────────
 export default function ProductScopePage() {
   const navigate = useNavigate();
 
-  const [tab,      setTab]      = useState('Product');
-  const [eanText,  setEanText]  = useState('');
-  const [search,   setSearch]   = useState('');
-  const [showMore, setShowMore] = useState(false);
+  const [tab,        setTab]        = useState('Product');
+  const [eanText,    setEanText]    = useState('');
+  const [search,     setSearch]     = useState('');
+  const [showMore,   setShowMore]   = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [eanError,   setEanError]   = useState('');
 
   const [products,    setProducts]    = useState([]);
   const [categories,  setCategories]  = useState([]);
@@ -92,21 +79,20 @@ export default function ProductScopePage() {
     getBrands().then((data)     => setBrands(data?.brands ?? []));
   }, []);
 
-  // Remplace le useEffect products par ceci :
   useEffect(() => {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setLoadingProd(true);
-      try { 
+      try {
         const limit = showMore ? 50 : 20;
-        const data = await searchProducts(search, limit);
+        const data  = await searchProducts(search, limit);
         setProducts(data?.products ?? []);
       } finally {
         setLoadingProd(false);
       }
     }, 300);
     return () => clearTimeout(debounceRef.current);
-  }, [search, showMore]); // ← ajouter showMore ici
+  }, [search, showMore]);
 
   const [selected,  toggleProduct]  = useSet();
   const [selCats,   toggleCategory] = useSet();
@@ -140,9 +126,9 @@ export default function ProductScopePage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const eans = ev.target.result
-        .split(/[\n,;]+/)
-        .map((s) => s.trim())
+      const lines = ev.target.result.split(/[\n\r]+/);
+      const eans  = lines
+        .map((s) => s.trim().replace(/^["']|["']$/g, ''))
         .filter((s) => /^\d{8,14}$/.test(s));
       setEanText((prev) => {
         const existing = prev.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
@@ -153,7 +139,42 @@ export default function ProductScopePage() {
     e.target.value = '';
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    setEanError('');
+
+    if (tab === 'Product') {
+      const allEans = [...new Set([...eanList, ...selected])];
+      if (allEans.length === 0) return;
+
+      setValidating(true);
+      try {
+        const token = localStorage.getItem('access_token');
+        const res   = await fetch('/api/v1/products/by-eans', {
+          method:  'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ eans: allEans }),
+        });
+        const data     = await res.json();
+        const notFound = data?.not_found || [];
+
+        if (notFound.length > 0) {
+          setEanError(
+            `The following EAN${notFound.length > 1 ? 's were' : ' was'} not found in the database: ${notFound.join(', ')}. Please check and try again.`
+          );
+          setValidating(false);
+          return;
+        }
+      } catch (e) {
+        setEanError('Failed to validate EANs. Please try again.');
+        setValidating(false);
+        return;
+      }
+      setValidating(false);
+    }
+
     navigate('/pricing-rules/strategy-configuration', {
       state: {
         scopeType:  tab,
@@ -194,21 +215,14 @@ export default function ProductScopePage() {
           borderRadius: 10, padding: 4, width: 'fit-content', marginBottom: 20,
         }}>
           {['Product', 'Category', 'Brand'].map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
+            <button key={t} onClick={() => { setTab(t); setEanError(''); }}
               style={{
-                padding:    '8px 20px',
-                borderRadius: 8,
-                border:     'none',
+                padding: '8px 20px', borderRadius: 8, border: 'none',
                 background: tab === t ? C.surface : 'transparent',
                 color:      tab === t ? C.text : C.textMuted,
-                fontSize:   13,
-                fontWeight: tab === t ? 700 : 400,
-                cursor:     'pointer',
-                fontFamily: 'inherit',
-                boxShadow:  tab === t ? S.card : 'none',
-                transition: 'all 0.15s',
+                fontSize: 13, fontWeight: tab === t ? 700 : 400,
+                cursor: 'pointer', fontFamily: 'inherit',
+                boxShadow: tab === t ? S.card : 'none', transition: 'all 0.15s',
               }}
             >
               {t}
@@ -220,10 +234,7 @@ export default function ProductScopePage() {
         {tab === 'Product' && (
           <>
             <div style={{ marginBottom: 20 }}>
-              <div style={{
-                display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', marginBottom: 10,
-              }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>
                     Enter the EANs
@@ -233,17 +244,12 @@ export default function ProductScopePage() {
                   </div>
                 </div>
                 <div>
-                  <Button
-                    variant="secondary"
-                    icon={<IconUpload />}
-                    onClick={() => document.getElementById('csv-upload').click()}
-                  >
+                  <Button variant="secondary" icon={<IconUpload />}
+                    onClick={() => document.getElementById('csv-upload').click()}>
                     Import CSV
                   </Button>
-                  <input
-                    id="csv-upload" type="file" accept=".csv"
-                    style={{ display: 'none' }} onChange={handleCSVImport}
-                  />
+                  <input id="csv-upload" type="file" accept=".csv"
+                    style={{ display: 'none' }} onChange={handleCSVImport} />
                 </div>
               </div>
 
@@ -251,19 +257,29 @@ export default function ProductScopePage() {
               <textarea
                 id="ean-input"
                 value={eanText}
-                onChange={(e) => setEanText(e.target.value)}
+                onChange={(e) => { setEanText(e.target.value); setEanError(''); }}
                 rows={4}
                 placeholder={"3017620422003,\n7613034945532,\n..."}
                 style={{
                   width: '100%', padding: '11px 14px', borderRadius: R.md,
-                  border: `1.5px solid ${C.border}`, fontSize: 13, color: C.text,
-                  outline: 'none', fontFamily: 'monospace', resize: 'vertical',
+                  border: `1.5px solid ${eanError ? '#FECACA' : C.border}`,
+                  fontSize: 13, color: C.text, outline: 'none',
+                  fontFamily: 'monospace', resize: 'vertical',
                   boxSizing: 'border-box', background: C.bg,
                 }}
               />
-              {eanList.length > 0 && (
+              {eanList.length > 0 && !eanError && (
                 <div style={{ fontSize: 11, color: C.accent, marginTop: 6, fontWeight: 600 }}>
                   ✓ {eanList.length} valid EAN{eanList.length !== 1 ? 's' : ''} detected
+                </div>
+              )}
+              {eanError && (
+                <div style={{
+                  background: '#FEF2F2', border: '1.5px solid #FECACA',
+                  borderRadius: R.md, padding: '12px 14px', marginTop: 10,
+                  fontSize: 12, color: '#dc2626', lineHeight: 1.6,
+                }}>
+                  <strong>EAN not found:</strong> {eanError}
                 </div>
               )}
             </div>
@@ -281,14 +297,12 @@ export default function ProductScopePage() {
                   strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input
-                  value={search} onChange={(e) => setSearch(e.target.value)}
+                <input value={search} onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search by name or EAN..."
                   style={{
                     border: 'none', outline: 'none', fontSize: 13,
                     color: C.text, background: 'transparent', fontFamily: 'inherit', flex: 1,
-                  }}
-                />
+                  }} />
               </div>
             </div>
 
@@ -299,16 +313,13 @@ export default function ProductScopePage() {
                 {products.map((p) => {
                   const on = selected.has(p.ean);
                   return (
-                    <div
-                      key={p.ean} onClick={() => toggleProduct(p.ean)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 12,
-                        padding: '10px 14px', borderRadius: R.md, cursor: 'pointer',
-                        background: on ? '#F0F7FF' : 'transparent',
-                        border: on ? `1.5px solid ${C.accent}` : '1.5px solid transparent',
-                        transition: 'all 0.12s',
-                      }}
-                    >
+                    <div key={p.ean} onClick={() => toggleProduct(p.ean)} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 14px', borderRadius: R.md, cursor: 'pointer',
+                      background: on ? '#F0F7FF' : 'transparent',
+                      border: on ? `1.5px solid ${C.accent}` : '1.5px solid transparent',
+                      transition: 'all 0.12s',
+                    }}>
                       <div style={{
                         width: 18, height: 18, borderRadius: 5, flexShrink: 0,
                         border: `2px solid ${on ? C.accent : C.border}`,
@@ -340,14 +351,11 @@ export default function ProductScopePage() {
             )}
 
             <div style={{ textAlign: 'center', marginTop: 12 }}>
-              <button
-                onClick={() => setShowMore((s) => !s)}
-                style={{
-                  fontSize: 13, fontWeight: 600, color: C.accent,
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  fontFamily: 'inherit', textDecoration: 'underline',
-                }}
-              >
+              <button onClick={() => setShowMore((s) => !s)} style={{
+                fontSize: 13, fontWeight: 600, color: C.accent,
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontFamily: 'inherit', textDecoration: 'underline',
+              }}>
                 {showMore ? 'Show less' : 'Show more products'}
               </button>
             </div>
@@ -358,10 +366,8 @@ export default function ProductScopePage() {
         {tab === 'Category' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
             {categories.map((cat) => (
-              <SelectCard
-                key={cat.name} name={cat.name} sub={`${cat.product_count} products`}
-                selected={selCats.has(cat.name)} onClick={() => toggleCategory(cat.name)}
-              />
+              <SelectCard key={cat.name} name={cat.name} sub={`${cat.product_count} products`}
+                selected={selCats.has(cat.name)} onClick={() => toggleCategory(cat.name)} />
             ))}
           </div>
         )}
@@ -370,10 +376,8 @@ export default function ProductScopePage() {
         {tab === 'Brand' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
             {brands.map((br) => (
-              <SelectCard
-                key={br.name} name={br.name} sub={`${br.product_count} products`}
-                selected={selBrands.has(br.name)} onClick={() => toggleBrand(br.name)}
-              />
+              <SelectCard key={br.name} name={br.name} sub={`${br.product_count} products`}
+                selected={selBrands.has(br.name)} onClick={() => toggleBrand(br.name)} />
             ))}
           </div>
         )}
@@ -382,7 +386,8 @@ export default function ProductScopePage() {
       <WorkflowFooter
         label={scopeLabel()}
         onNext={handleNext}
-        nextDisabled={totalSelected === 0}
+        nextDisabled={totalSelected === 0 || validating}
+        nextLoading={validating}
       />
     </div>
   );
