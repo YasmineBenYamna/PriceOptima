@@ -9,6 +9,10 @@ export function useLLMSuggestion(scope) {
   const category = scope?.category || scope?.categories?.[0] || undefined;
   const brand = scope?.brand || scope?.brands?.[0] || undefined;
 
+  // BUG FIX 1: enabled était absent du return, ce qui causait aiEnabled === undefined
+  // dans StrategyConfigurationPage et empêchait l'affichage du panel.
+  const enabled = !!(category || brand);
+
   useEffect(() => {
     if (!category && !brand) {
       setSuggestion(null);
@@ -51,5 +55,5 @@ export function useLLMSuggestion(scope) {
     };
   }, [category, brand]);
 
-  return { loading, suggestion, error };
+  return { loading, suggestion, error, enabled };
 }

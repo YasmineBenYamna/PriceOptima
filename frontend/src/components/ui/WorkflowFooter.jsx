@@ -1,6 +1,6 @@
 // src/components/ui/WorkflowFooter.jsx
 import React from 'react';
-import { C } from './tokens.js';
+import { C, F } from './tokens.js';
 import { Button } from './Button.jsx';
 
 const ArrowLeft = () => (
@@ -44,14 +44,22 @@ export function WorkflowFooter({
       zIndex:         20,
       boxShadow:      '0 -4px 16px rgba(0,0,0,0.06)',
     }}>
-      <div style={{ fontSize: 13, color: C.textMuted }}>{label}</div>
+      <div style={{ fontFamily: F.body, fontSize: 13, color: C.textMuted }}>
+        {label}
+      </div>
       <div style={{ display: 'flex', gap: 10 }}>
         {onBack && (
           <Button variant="secondary" icon={<ArrowLeft />} onClick={onBack}>
             {backLabel}
           </Button>
         )}
-        <Button variant="primary" icon={<ArrowRight />} disabled={nextDisabled} loading={nextLoading} onClick={onNext}>
+        <Button
+          variant="primary"
+          icon={<ArrowRight />}
+          disabled={nextDisabled}
+          loading={nextLoading}
+          onClick={onNext}
+        >
           {nextLabel}
         </Button>
       </div>

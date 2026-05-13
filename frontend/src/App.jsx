@@ -11,20 +11,30 @@ import StrategyConfigurationPage from './pages/StrategyConfigurationPage.jsx';
 import RuleConfigurationPage from './pages/RuleConfigurationPage.jsx';
 import JobsPage from './pages/JobsPage.jsx';
 
-const C = {
-  bg: '#FAFBFF',
-  border: '#C5D5EC',
-};
+const LAYOUT_BG = 'var(--color-bg)';
+const LAYOUT_BORDER = 'var(--color-border)';
 
 function AppLayout({ children }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: C.bg }}>
-      <div style={{ display: 'flex', flex: 1 }}>
-        <Sidebar />
-        <main style={{ flex: 1, padding: '28px 32px', overflowY: 'auto', minWidth: 0 }}>
-          {children}
-        </main>
-      </div>
+    <div
+      style={{
+        display: 'flex',
+        minHeight: '100vh',
+        background: LAYOUT_BG,
+      }}
+    >
+      <Sidebar />
+      <main
+        style={{
+          flex: 1,
+          padding: '28px 32px',
+          borderLeft: `1px solid ${LAYOUT_BORDER}`,
+          overflowY: 'auto',
+          minWidth: 0,
+        }}
+      >
+        {children}
+      </main>
     </div>
   );
 }
@@ -39,14 +49,14 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Première page — Landing */}
+        {/* Landing marketing */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/landing" element={<LandingPage />} />
 
-        {/* Public */}
+        {/* Auth */}
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Protected — avec layout */}
+        {/* Workflow pricing */}
         <Route
           path="/pricing-rules/scope"
           element={
@@ -71,6 +81,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Jobs */}
         <Route
           path="/jobs"
           element={

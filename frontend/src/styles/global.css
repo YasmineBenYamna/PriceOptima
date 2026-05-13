@@ -1,0 +1,158 @@
+/* src/styles/global.css
+   Source unique de vérité pour le design system.
+   Importé une seule fois dans main.jsx.
+   ─────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Sora:wght@400;600;700;800&display=swap');
+
+/* ── Variables ────────────────────────────────── */
+:root {
+  /* Couleurs de base */
+  --color-bg:           #FAFBFF;
+  --color-surface:      #FFFFFF;
+  --color-surface-alt:  #F8FAFF;
+  --color-border:       #C5D5EC;
+  --color-divider:      rgba(197, 213, 236, 0.5);
+
+  /* Texte */
+  --color-text:         #022448;
+  --color-text-muted:   #6B7280;
+  --color-text-faint:   #8AA4CF;
+  --color-text-inverse: #FFFFFF;
+
+  /* Accent (orange-brun PriceOptima) */
+  --color-accent:       #A43C12;
+  --color-accent-hover: #8a3210;
+  --color-accent-bg:    #E8EFFA;
+
+  /* Primaire (navy) */
+  --color-primary:      #1E3A5F;
+  --color-primary-light:#2A5298;
+
+  /* États */
+  --color-success-bg:   #F0FDF4;
+  --color-success-text: #166534;
+  --color-success-border:#86EFAC;
+
+  --color-info-bg:      #EFF6FF;
+  --color-info-text:    #1D4ED8;
+  --color-info-border:  #93C5FD;
+
+  --color-danger-bg:    #FEF2F2;
+  --color-danger-text:  #dc2626;
+  --color-danger-border:#FECACA;
+
+  --color-warning-bg:   #FFFBEB;
+  --color-warning-text: #92400E;
+  --color-warning-border:#FDE68A;
+
+  --color-neutral-bg:   #F4F7FF;
+  --color-neutral-text: #1E3A5F;
+  --color-neutral-border:#8AA4CF;
+
+  /* Typographie */
+  --font-display: 'Sora', sans-serif;
+  --font-body:    'Inter', sans-serif;
+
+  --text-xs:   0.6875rem;   /* 11px */
+  --text-sm:   0.8125rem;   /* 13px */
+  --text-base: 0.875rem;    /* 14px */
+  --text-md:   0.9375rem;   /* 15px */
+  --text-lg:   1.125rem;    /* 18px */
+  --text-xl:   1.375rem;    /* 22px */
+  --text-2xl:  1.75rem;     /* 28px */
+  --text-3xl:  2.25rem;     /* 36px */
+
+  /* Border-radius */
+  --radius-xs:  4px;
+  --radius-sm:  7px;
+  --radius-md:  9px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+  --radius-2xl: 18px;
+  --radius-full:9999px;
+
+  /* Ombres */
+  --shadow-sm:   0 1px 4px rgba(0,0,0,0.04);
+  --shadow-md:   0 4px 16px rgba(0,0,0,0.08);
+  --shadow-lg:   0 16px 48px rgba(0,0,0,0.12);
+  --shadow-btn:  0 4px 16px rgba(164,60,18,0.28);
+}
+
+/* ── Reset minimal ────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  background: var(--color-bg);
+  line-height: 1.6;
+  min-height: 100dvh;
+}
+
+/* Titres avec Sora */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+a { color: inherit; text-decoration: none; }
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+/* ── Animations globales ──────────────────────── */
+@keyframes ui-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ui-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(1.3); }
+}
+
+@keyframes ui-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Scrollbar discrète ───────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-faint); }
+
+/* ── Focus visible ────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Sélection ────────────────────────────────── */
+::selection {
+  background: rgba(164, 60, 18, 0.15);
+  color: var(--color-text);
+}

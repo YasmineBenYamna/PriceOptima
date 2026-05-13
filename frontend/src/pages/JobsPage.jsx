@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getJobs, getJob, deleteJob } from '../api/api.js';
 import {
-  C, R, S,
-  Button, Alert, PageSpinner, Card, SectionLabel, Breadcrumb,
+  C, R, S, F,
+  Button, Alert, PageSpinner, Card, SectionLabel, Breadcrumb, PageHeader,
 } from '../components/ui/index.js';
 
 // ── Icônes ────────────────────────────────────────────────────────────────────
@@ -33,21 +33,32 @@ const TrashIcon = () => (
 // ── Badge statut ──────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
   const config = {
-    completed: { bg: '#F0FDF4', color: '#166534', border: '#86EFAC', label: 'Completed', dot: '#22c55e' },
-    failed:    { bg: '#FEF2F2', color: '#dc2626', border: '#FECACA', label: 'Failed',    dot: '#ef4444' },
-    pending:   { bg: '#FFFBEB', color: '#92400E', border: '#FDE68A', label: 'Pending',   dot: '#f59e0b' },
-    running:   { bg: '#EFF6FF', color: '#1d4ed8', border: '#BFDBFE', label: 'Running',   dot: '#3b82f6' },
+    completed: { ...C.success, label: 'Completed', dot: '#22c55e' },
+    failed:    { ...C.danger,  label: 'Failed',    dot: '#ef4444' },
+    pending:   { ...C.warning, label: 'Pending',   dot: '#f59e0b' },
+    running:   { ...C.info,    label: 'Running',   dot: '#3b82f6' },
   };
   const c = config[status] || config.pending;
   return (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-      background: c.bg, color: c.color, border: `1px solid ${c.border}`,
+      display:      'inline-flex',
+      alignItems:   'center',
+      gap:          5,
+      fontFamily:   F.body,
+      fontSize:     11,
+      fontWeight:   700,
+      padding:      '3px 10px',
+      borderRadius: R.full,
+      background:   c.bg,
+      color:        c.text,
+      border:       `1px solid ${c.border}`,
     }}>
       <span style={{
-        width: 6, height: 6, borderRadius: '50%', background: c.dot,
-        animation: status === 'running' || status === 'pending' ? 'pulse 1.5s ease infinite' : 'none',
+        width:       6,
+        height:      6,
+        borderRadius:'50%',
+        background:  c.dot,
+        animation:   (status === 'running' || status === 'pending') ? 'ui-pulse 1.5s ease infinite' : 'none',
       }} />
       {c.label}
     </span>
@@ -64,24 +75,34 @@ function Timeline({ steps }) {
         return (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{
-              width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: isDone ? '#F0FDF4' : isFailed ? '#FEF2F2' : '#F4F7FF',
-              border: `2px solid ${isDone ? '#86EFAC' : isFailed ? '#FECACA' : C.border}`,
+              width:          22,
+              height:         22,
+              borderRadius:   '50%',
+              flexShrink:     0,
+              display:        'flex',
+              alignItems:     'center',
+              justifyContent: 'center',
+              background:     isDone ? C.success.bg : isFailed ? C.danger.bg : C.neutral.bg,
+              border:         `2px solid ${isDone ? C.success.border : isFailed ? C.danger.border : C.border}`,
             }}>
               {isDone ? (
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={C.success.text} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
               ) : isFailed ? (
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={C.danger.text} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
               ) : (
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.border }} />
               )}
             </div>
-            <span style={{ fontSize: 13, color: isDone ? C.text : isFailed ? '#dc2626' : C.textMuted, fontWeight: isDone ? 600 : 400 }}>
+            <span style={{
+              fontFamily: F.body,
+              fontSize:   13,
+              color:      isDone ? C.text : isFailed ? C.danger.text : C.textMuted,
+              fontWeight: isDone ? 600 : 400,
+            }}>
               {step.step}
             </span>
           </div>
@@ -91,21 +112,17 @@ function Timeline({ steps }) {
   );
 }
 
-// ── Téléchargement CSV ────────────────────────────────────────────────────────
+// ── Download CSV ──────────────────────────────────────────────────────────────
 function downloadCSV(job, detail) {
-  const rows   = detail?.price_changes || [];
+  const rows = detail?.price_changes || [];
   if (!rows.length) return;
-
   const header = ['EAN', 'Prix Original (€)', 'Prix Final (€)', 'Variation (€)', 'Variation (%)', 'Règle déclenchée'];
   const lines  = rows.map(r => [
-    r.product_id,
-    r.old_price,
-    r.new_price,
+    r.product_id, r.old_price, r.new_price,
     (r.new_price - r.old_price).toFixed(4),
     r.change_pct,
     r.rule_triggered || 'N/A',
   ].join(','));
-
   const csv  = [header.join(','), ...lines].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
@@ -120,13 +137,13 @@ function downloadCSV(job, detail) {
 
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function JobsPage() {
-  const [jobs,         setJobs]         = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState('');
-  const [selectedJob,  setSelectedJob]  = useState(null);
-  const [jobDetail,    setJobDetail]    = useState(null);
-  const [loadingDetail,setLoadingDetail]= useState(false);
-  const [deleting,     setDeleting]     = useState(null);
+  const [jobs,          setJobs]          = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [error,         setError]         = useState('');
+  const [selectedJob,   setSelectedJob]   = useState(null);
+  const [jobDetail,     setJobDetail]     = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [deleting,      setDeleting]      = useState(null);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -141,39 +158,28 @@ export default function JobsPage() {
 
   useEffect(() => {
     fetchJobs();
-    // Auto-refresh toutes les 10s pour les jobs pending/running
-    const interval = setInterval(() => {
-      fetchJobs();
-    }, 10000);
+    const interval = setInterval(fetchJobs, 10000);
     return () => clearInterval(interval);
   }, [fetchJobs]);
 
-  // Quand un job completed apparaît → télécharger automatiquement
   useEffect(() => {
     jobs.forEach(async (job) => {
       if (job.status === 'completed' && !job._downloaded) {
         job._downloaded = true;
         try {
           const detail = await getJob(job.id);
-          if (detail?.price_changes?.length > 0) {
-            downloadCSV(job, detail);
-          }
+          if (detail?.price_changes?.length > 0) downloadCSV(job, detail);
         } catch {}
       }
     });
   }, [jobs]);
 
   const handleSelectJob = async (job) => {
-    if (selectedJob?.id === job.id) {
-      setSelectedJob(null);
-      setJobDetail(null);
-      return;
-    }
+    if (selectedJob?.id === job.id) { setSelectedJob(null); setJobDetail(null); return; }
     setSelectedJob(job);
     setLoadingDetail(true);
     try {
-      const detail = await getJob(job.id);
-      setJobDetail(detail);
+      setJobDetail(await getJob(job.id));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -197,15 +203,10 @@ export default function JobsPage() {
 
   const handleDownload = async (job, e) => {
     e.stopPropagation();
-    try {
-      const detail = await getJob(job.id);
-      downloadCSV(job, detail);
-    } catch (err) {
-      setError(err.message);
-    }
+    try { downloadCSV(job, await getJob(job.id)); }
+    catch (err) { setError(err.message); }
   };
 
-  // Stats
   const stats = {
     total:     jobs.length,
     pending:   jobs.filter(j => j.status === 'pending' || j.status === 'running').length,
@@ -218,42 +219,64 @@ export default function JobsPage() {
   return (
     <div style={{ paddingBottom: 40 }}>
       <Breadcrumb items={[{ label: 'Jobs', active: true }]} />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: '0 0 4px', letterSpacing: '-0.03em' }}>
-            Jobs de Pricing
-          </h1>
-          <p style={{ fontSize: 13, color: C.textMuted, margin: 0 }}>
-            Historique des calculs de prix — les résultats sont téléchargés automatiquement en CSV.
-          </p>
-        </div>
-        <Button icon={<RefreshIcon />} onClick={fetchJobs} variant="secondary">
-          Actualiser
-        </Button>
-      </div>
+
+      <PageHeader
+        title="Jobs de Pricing"
+        subtitle="Historique des calculs de prix — les résultats sont téléchargés automatiquement en CSV."
+        actions={
+          <Button icon={<RefreshIcon />} onClick={fetchJobs} variant="secondary">
+            Actualiser
+          </Button>
+        }
+      />
 
       {error && <Alert variant="danger" style={{ marginBottom: 20 }}>{error}</Alert>}
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
         {[
-          { label: 'Total',     value: stats.total,     color: C.text,    bg: C.surface   },
-          { label: 'En attente', value: stats.pending,  color: '#92400E', bg: '#FFFBEB'  },
-          { label: 'Complétés', value: stats.completed, color: '#166534', bg: '#F0FDF4'  },
-          { label: 'Échoués',   value: stats.failed,    color: '#dc2626', bg: '#FEF2F2'  },
+          { label: 'Total',      value: stats.total,     color: C.text,         bg: C.surface,     border: C.border        },
+          { label: 'En attente', value: stats.pending,   color: C.warning.text, bg: C.warning.bg,  border: C.warning.border },
+          { label: 'Complétés',  value: stats.completed, color: C.success.text, bg: C.success.bg,  border: C.success.border },
+          { label: 'Échoués',    value: stats.failed,    color: C.danger.text,  bg: C.danger.bg,   border: C.danger.border  },
         ].map((s, i) => (
           <div key={i} style={{
-            background: s.bg, borderRadius: R.lg, padding: '16px 20px',
-            border: `1px solid ${C.border}`,
+            background:   s.bg,
+            borderRadius: R.lg,
+            padding:      '16px 20px',
+            border:       `1px solid ${s.border}`,
           }}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: s.color, letterSpacing: '-0.03em' }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>{s.label}</div>
+            <div style={{
+              fontFamily:    F.display,
+              fontSize:      24,
+              fontWeight:    800,
+              color:         s.color,
+              letterSpacing: '-0.03em',
+            }}>
+              {s.value}
+            </div>
+            <div style={{
+              fontFamily:    F.body,
+              fontSize:      11,
+              color:         C.textMuted,
+              textTransform: 'uppercase',
+              letterSpacing: '.06em',
+              marginTop:     2,
+            }}>
+              {s.label}
+            </div>
           </div>
         ))}
       </div>
 
       {jobs.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60, color: C.textMuted, fontSize: 14 }}>
+        <div style={{
+          textAlign:  'center',
+          padding:    60,
+          color:      C.textMuted,
+          fontFamily: F.body,
+          fontSize:   14,
+        }}>
           Aucun job trouvé. Lancez un calcul de pricing pour commencer.
         </div>
       ) : (
@@ -264,26 +287,36 @@ export default function JobsPage() {
             <SectionLabel>Tous les jobs</SectionLabel>
             {jobs.map(job => (
               <Card key={job.id} onClick={() => handleSelectJob(job)} style={{
-                padding: '16px 20px', cursor: 'pointer',
-                border: selectedJob?.id === job.id ? `2px solid ${C.accent}` : `1.5px solid ${C.border}`,
+                padding:   '16px 20px',
+                cursor:    'pointer',
+                border:    selectedJob?.id === job.id ? `2px solid ${C.accent}` : `1.5px solid ${C.border}`,
                 boxShadow: selectedJob?.id === job.id ? `0 0 0 3px rgba(164,60,18,0.08)` : S.card,
-                transition: 'all 0.15s',
+                transition:'all 0.15s',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: 'monospace' }}>
+                      <span style={{
+                        fontFamily: F.body,
+                        fontSize:   13,
+                        fontWeight: 700,
+                        color:      C.text,
+                        fontVariantNumeric: 'tabular-nums',
+                      }}>
                         {job.job_number || `JOB-${job.id?.slice(0,6).toUpperCase()}`}
                       </span>
                       <StatusBadge status={job.status} />
                     </div>
-                    <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 2 }}>
+                    <div style={{ fontFamily: F.body, fontSize: 12, color: C.textMuted, marginBottom: 2 }}>
                       Stratégie : <strong>{job.strategy_name}</strong>
                     </div>
-                    <div style={{ display: 'flex', gap: 16, fontSize: 11, color: C.textFaint }}>
+                    <div style={{ display: 'flex', gap: 16, fontFamily: F.body, fontSize: 11, color: C.textFaint }}>
                       <span>{job.total_processed} produits traités</span>
                       {job.average_delta !== undefined && (
-                        <span style={{ color: job.average_delta < 0 ? '#166534' : job.average_delta > 0 ? '#dc2626' : C.textFaint, fontWeight: 600 }}>
+                        <span style={{
+                          color:      job.average_delta < 0 ? C.success.text : job.average_delta > 0 ? C.danger.text : C.textFaint,
+                          fontWeight: 600,
+                        }}>
                           {job.average_delta > 0 ? '+' : ''}{job.average_delta?.toFixed(2)}% variation moy.
                         </span>
                       )}
@@ -291,7 +324,6 @@ export default function JobsPage() {
                     </div>
                   </div>
 
-                  {/* Actions */}
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                     {job.status === 'completed' && (
                       <Button variant="secondary" icon={<DownloadIcon />} onClick={e => handleDownload(job, e)}>
@@ -316,13 +348,22 @@ export default function JobsPage() {
               <SectionLabel>Détail du job</SectionLabel>
               <Card style={{ padding: '20px 24px' }}>
                 {loadingDetail ? (
-                  <div style={{ textAlign: 'center', padding: 24, color: C.textMuted }}>Chargement...</div>
+                  <div style={{ textAlign: 'center', padding: 24, fontFamily: F.body, color: C.textMuted }}>
+                    Chargement...
+                  </div>
                 ) : jobDetail ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
                     {/* Header */}
                     <div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 4 }}>
+                      <div style={{
+                        fontFamily:    F.display,
+                        fontSize:      16,
+                        fontWeight:    800,
+                        color:         C.text,
+                        marginBottom:  4,
+                        letterSpacing: '-0.02em',
+                      }}>
                         {jobDetail.job_number || selectedJob.job_number}
                       </div>
                       <StatusBadge status={jobDetail.status} />
@@ -331,13 +372,20 @@ export default function JobsPage() {
                     {/* Infos */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {[
-                        ['Stratégie',   jobDetail.strategy_name],
-                        ['Produits',    `${jobDetail.total_processed} traités`],
-                        ['Mis à jour',  `${jobDetail.prices_updated} prix`],
-                        ['Durée',       `${jobDetail.runtime_seconds}s`],
+                        ['Stratégie',      jobDetail.strategy_name],
+                        ['Produits',       `${jobDetail.total_processed} traités`],
+                        ['Mis à jour',     `${jobDetail.prices_updated} prix`],
+                        ['Durée',          `${jobDetail.runtime_seconds}s`],
                         ['Variation moy.', `${jobDetail.average_delta > 0 ? '+' : ''}${jobDetail.average_delta?.toFixed(2)}%`],
                       ].map(([k, v]) => (
-                        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: `1px solid ${C.divider || C.border}` }}>
+                        <div key={k} style={{
+                          display:       'flex',
+                          justifyContent:'space-between',
+                          fontFamily:    F.body,
+                          fontSize:      12,
+                          padding:       '4px 0',
+                          borderBottom:  `1px solid ${C.divider}`,
+                        }}>
                           <span style={{ color: C.textMuted }}>{k}</span>
                           <span style={{ fontWeight: 600, color: C.text }}>{v}</span>
                         </div>
@@ -346,7 +394,15 @@ export default function JobsPage() {
 
                     {/* Timeline */}
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 12 }}>
+                      <div style={{
+                        fontFamily:    F.body,
+                        fontSize:      11,
+                        fontWeight:    700,
+                        color:         C.textFaint,
+                        textTransform: 'uppercase',
+                        letterSpacing: '.07em',
+                        marginBottom:  12,
+                      }}>
                         Logs d'exécution
                       </div>
                       <Timeline steps={jobDetail.execution_timeline} />
@@ -355,18 +411,42 @@ export default function JobsPage() {
                     {/* Distribution */}
                     {jobDetail.distribution && (
                       <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 12 }}>
+                        <div style={{
+                          fontFamily:    F.body,
+                          fontSize:      11,
+                          fontWeight:    700,
+                          color:         C.textFaint,
+                          textTransform: 'uppercase',
+                          letterSpacing: '.07em',
+                          marginBottom:  12,
+                        }}>
                           Distribution des variations
                         </div>
                         <div style={{ display: 'flex', gap: 8 }}>
                           {[
-                            { label: 'Baisse',  pct: jobDetail.distribution.markdown_pct,  color: '#166534', bg: '#F0FDF4' },
-                            { label: 'Stable',  pct: jobDetail.distribution.unchanged_pct, color: C.textMuted, bg: '#F8FAFF' },
-                            { label: 'Hausse',  pct: jobDetail.distribution.markup_pct,    color: '#dc2626', bg: '#FEF2F2' },
+                            { label: 'Baisse',  pct: jobDetail.distribution.markdown_pct,  color: C.success.text, bg: C.success.bg },
+                            { label: 'Stable',  pct: jobDetail.distribution.unchanged_pct, color: C.textMuted,    bg: C.surfaceAlt },
+                            { label: 'Hausse',  pct: jobDetail.distribution.markup_pct,    color: C.danger.text,  bg: C.danger.bg  },
                           ].map(d => (
-                            <div key={d.label} style={{ flex: 1, textAlign: 'center', padding: '10px 8px', borderRadius: R.md, background: d.bg }}>
-                              <div style={{ fontSize: 16, fontWeight: 800, color: d.color }}>{d.pct}%</div>
-                              <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>{d.label}</div>
+                            <div key={d.label} style={{
+                              flex:         1,
+                              textAlign:    'center',
+                              padding:      '10px 8px',
+                              borderRadius: R.md,
+                              background:   d.bg,
+                            }}>
+                              <div style={{
+                                fontFamily:    F.display,
+                                fontSize:      16,
+                                fontWeight:    800,
+                                color:         d.color,
+                                letterSpacing: '-0.02em',
+                              }}>
+                                {d.pct}%
+                              </div>
+                              <div style={{ fontFamily: F.body, fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+                                {d.label}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -376,17 +456,34 @@ export default function JobsPage() {
                     {/* Erreurs */}
                     {jobDetail.errors?.length > 0 && (
                       <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>
+                        <div style={{
+                          fontFamily:    F.body,
+                          fontSize:      11,
+                          fontWeight:    700,
+                          color:         C.danger.text,
+                          textTransform: 'uppercase',
+                          letterSpacing: '.07em',
+                          marginBottom:  8,
+                        }}>
                           Erreurs ({jobDetail.errors.length})
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                           {jobDetail.errors.slice(0, 5).map((err, i) => (
-                            <div key={i} style={{ fontSize: 11, color: '#dc2626', background: '#FEF2F2', padding: '6px 10px', borderRadius: R.sm }}>
+                            <div key={i} style={{
+                              fontFamily:   F.body,
+                              fontSize:     11,
+                              color:        C.danger.text,
+                              background:   C.danger.bg,
+                              padding:      '6px 10px',
+                              borderRadius: R.sm,
+                            }}>
                               EAN {err.ean || err.product_id} : {err.error}
                             </div>
                           ))}
                           {jobDetail.errors.length > 5 && (
-                            <div style={{ fontSize: 11, color: C.textMuted }}>+ {jobDetail.errors.length - 5} autres erreurs</div>
+                            <div style={{ fontFamily: F.body, fontSize: 11, color: C.textMuted }}>
+                              + {jobDetail.errors.length - 5} autres erreurs
+                            </div>
                           )}
                         </div>
                       </div>
@@ -410,8 +507,6 @@ export default function JobsPage() {
           )}
         </div>
       )}
-
-      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }`}</style>
     </div>
   );
 }

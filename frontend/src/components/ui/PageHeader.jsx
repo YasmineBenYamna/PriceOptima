@@ -1,17 +1,7 @@
 // src/components/ui/PageHeader.jsx
 import React from 'react';
-import { C } from './tokens.js';
+import { C, F } from './tokens.js';
 
-/**
- * En-tête de page avec titre, sous-titre et actions.
- *
- * Exemple :
- *   <PageHeader
- *     title="Jobs de Pricing"
- *     subtitle="Historique et gestion des calculs de prix."
- *     actions={<Button ...>Rafraîchir</Button>}
- *   />
- */
 export function PageHeader({ title, subtitle, actions }) {
   return (
     <div style={{
@@ -22,16 +12,24 @@ export function PageHeader({ title, subtitle, actions }) {
     }}>
       <div>
         <h1 style={{
+          fontFamily:    F.display,
           fontSize:      22,
           fontWeight:    800,
           color:         C.text,
           margin:        '0 0 4px',
           letterSpacing: '-0.03em',
+          lineHeight:    1.15,
         }}>
           {title}
         </h1>
         {subtitle && (
-          <p style={{ fontSize: 13, color: C.textMuted, margin: 0, lineHeight: 1.6 }}>
+          <p style={{
+            fontFamily: F.body,
+            fontSize:   13,
+            color:      C.textMuted,
+            margin:     0,
+            lineHeight: 1.6,
+          }}>
             {subtitle}
           </p>
         )}

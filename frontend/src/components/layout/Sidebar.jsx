@@ -2,7 +2,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logout } from '../../api/api.js';
-import { C, Logo } from '../ui/index.js';
+import { C, F, R, Logo } from '../ui/index.js';
 
 const NAV_ITEMS = [
   {
@@ -48,54 +48,104 @@ function NavItem({ item, active, onClick }) {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        display:    'flex',
-        alignItems: 'center',
-        gap:        10,
-        padding:    '9px 10px',
-        borderRadius: 8,
-        cursor:     'pointer',
-        background: active ? C.accentBg : hov ? '#F4F7FF' : 'transparent',
-        transition: 'all 0.18s ease',
+        display:      'flex',
+        alignItems:   'center',
+        gap:          10,
+        padding:      '9px 10px',
+        borderRadius: R.md,
+        cursor:       'pointer',
+        background:   active ? C.accentBg : hov ? C.neutral.bg : 'transparent',
+        transition:   'all 0.15s ease',
       }}
     >
-      <span style={{ color: active ? C.accent : C.textFaint, display: 'flex' }}>
+      <span style={{ color: active ? C.accent : C.textFaint, display: 'flex', flexShrink: 0 }}>
         {item.icon}
       </span>
-      <span style={{ fontSize: 13, fontWeight: active ? 600 : 400, color: active ? C.text : C.textMuted }}>
+      <span style={{
+        fontFamily: F.body,
+        fontSize:   13,
+        fontWeight: active ? 600 : 400,
+        color:      active ? C.text : C.textMuted,
+        lineHeight: 1,
+      }}>
         {item.label}
       </span>
     </div>
   );
 }
 
+function LogoutButton({ onClick }) {
+  const [hov, setHov] = React.useState(false);
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        display:      'flex',
+        alignItems:   'center',
+        gap:          10,
+        padding:      '8px 10px',
+        borderRadius: R.md,
+        cursor:       'pointer',
+        background:   hov ? C.danger.bg : 'transparent',
+        transition:   'background 0.15s',
+      }}
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.accent}
+        strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+        <polyline points="16 17 21 12 16 7" />
+        <line x1="21" y1="12" x2="9" y2="12" />
+      </svg>
+      <span style={{
+        fontFamily: F.body,
+        fontSize:   13,
+        fontWeight: 500,
+        color:      C.accent,
+      }}>
+        Déconnexion
+      </span>
+    </div>
+  );
+}
+
 export default function Sidebar() {
-  const navigate  = useNavigate();
-  const location  = useLocation();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const isActive = (item) => item.match.some((p) => location.pathname.startsWith(p));
-
   const handleLogout = () => { logout(); navigate('/login', { replace: true }); };
 
   return (
     <aside style={{
-      width:      220,
-      background: C.surface,
-      borderRight:`1px solid ${C.border}`,
-      display:    'flex',
-      flexDirection:'column',
-      padding:    '0 0 20px',
-      position:   'sticky',
-      top:        0,
-      height:     '100vh',
-      flexShrink: 0,
+      width:          220,
+      background:     C.surface,
+      borderRight:    `1px solid ${C.border}`,
+      display:        'flex',
+      flexDirection:  'column',
+      padding:        '0 0 20px',
+      position:       'sticky',
+      top:            0,
+      height:         '100vh',
+      flexShrink:     0,
     }}>
       {/* Logo */}
-      <div style={{ padding: '20px 18px 18px', borderBottom: '1px solid #DCE9FF' }}>
+      <div style={{
+        padding:      '20px 18px 18px',
+        borderBottom: `1px solid ${C.border}`,
+      }}>
         <Logo size="sm" />
       </div>
 
       {/* Nav */}
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '10px' }}>
+      <nav style={{
+        display:       'flex',
+        flexDirection: 'column',
+        gap:           2,
+        padding:       '10px',
+        marginTop:     4,
+      }}>
         {NAV_ITEMS.map((item) => (
           <NavItem
             key={item.label}
@@ -108,38 +158,10 @@ export default function Sidebar() {
 
       <div style={{ flex: 1 }} />
 
-      {/* Bas : Support + Déconnexion */}
+      {/* Déconnexion */}
       <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
         <LogoutButton onClick={handleLogout} />
       </div>
     </aside>
-  );
-}
-
-function LogoutButton({ onClick }) {
-  const [hov, setHov] = React.useState(false);
-  return (
-    <div
-      onClick={onClick}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        display:    'flex',
-        alignItems: 'center',
-        gap:        10,
-        padding:    '8px 10px',
-        borderRadius: 8,
-        cursor:     'pointer',
-        background: hov ? '#FEF2F2' : 'transparent',
-        transition: 'background 0.15s',
-      }}
-    >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-        <polyline points="16 17 21 12 16 7" />
-        <line x1="21" y1="12" x2="9" y2="12" />
-      </svg>
-      <span style={{ fontSize: 13, color: C.accent, fontWeight: 500 }}>Déconnexion</span>
-    </div>
   );
 }

@@ -1,2 +1,9 @@
 node_modules
 dist
+frontend/node_modules/
+**/node_modules/
+logs/
+data/
+__pycache__/
+*.pyc
+.env

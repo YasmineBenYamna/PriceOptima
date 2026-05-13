@@ -1,8 +1,8 @@
 // src/components/ui/index.js
 // Import depuis un seul endroit dans toute l'app :
-//   import { Button, Field, StatusBadge, ... } from '../components/ui';
+//   import { Button, Field, StatusBadge, F, ... } from '../components/ui';
 
-export { C, R, S, STATUS }           from './tokens.js';
+export { C, R, S, T, F, STATUS }     from './tokens.js';
 
 export { Button, IconButton }        from './Button.jsx';
 export { Spinner, PageSpinner }      from './Spinner.jsx';
@@ -18,5 +18,4 @@ export { EmptyState }                from './EmptyState.jsx';
 export { Modal, ModalHeader }        from './Modal.jsx';
 export { Breadcrumb }                from './Breadcrumb.jsx';
 export { PageHeader }                from './PageHeader.jsx';
-export { WorkflowFooter } from './WorkflowFooter.jsx';
-
+export { WorkflowFooter }            from './WorkflowFooter.jsx';

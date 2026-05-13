@@ -2,8 +2,16 @@ import React from 'react';
 import { C, R, S, Button, Alert } from '../ui/index.js';
 
 const SparkIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
   </svg>
 );
@@ -36,6 +44,16 @@ export default function LLMSuggestionPanel({
   onApply,
   onDismiss,
 }) {
+  const category = scope?.category || scope?.categories?.[0] || '';
+  const brand = scope?.brand || scope?.brands?.[0] || '';
+
+  // BUG FIX 2: l'ancienne condition vérifiait scope.scopeType === 'Category' | 'Brand'
+  // ce qui retournait null si scopeType était absent, undefined ou en minuscule.
+  // On vérifie simplement la présence de category ou brand.
+  const visible = !!category || !!brand;
+
+  if (!visible) return null;
+
   if (loading) {
     return (
       <section
@@ -71,26 +89,26 @@ export default function LLMSuggestionPanel({
 
   if (!suggestion) {
     return (
-        <section
+      <section
         style={{
-            background: C.surface,
-            border: `1.5px solid ${C.border}`,
-            borderRadius: R.xl,
-            padding: '18px 20px',
-            marginBottom: 24,
-            boxShadow: S.card,
+          background: C.surface,
+          border: `1.5px solid ${C.border}`,
+          borderRadius: R.xl,
+          padding: '18px 20px',
+          marginBottom: 24,
+          boxShadow: S.card,
         }}
-        >
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, color: C.accent }}>
-            <SparkIcon />
-            <span style={{ fontSize: 13, fontWeight: 800 }}>AI pricing suggestion</span>
+          <SparkIcon />
+          <span style={{ fontSize: 13, fontWeight: 800 }}>AI pricing suggestion</span>
         </div>
         <div style={{ fontSize: 12, color: C.textMuted }}>
-            Aucune suggestion IA disponible pour ce scope.
+          Aucune suggestion IA disponible pour ce scope.
         </div>
-        </section>
+      </section>
     );
-}
+  }
 
   return (
     <section
@@ -131,11 +149,11 @@ export default function LLMSuggestionPanel({
           </div>
 
           <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 6 }}>
-            {suggestion.recommended_strategy_name} strategy recommended
+            {(suggestion.recommended_strategy_name || suggestion.recommendedStrategyName || 'Unknown')} strategy recommended
           </div>
 
           <p style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.65, margin: 0 }}>
-            {suggestion.explanation}
+            {suggestion.explanation || suggestion.reasoning || 'No explanation provided.'}
           </p>
         </div>
 
@@ -156,8 +174,8 @@ export default function LLMSuggestionPanel({
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-        <Chip label="Category" value={scope?.category} />
-        <Chip label="Brand" value={scope?.brand} />
+        <Chip label="Category" value={category} />
+        <Chip label="Brand" value={brand} />
         <Chip label="IPP category" value={suggestion.context_used?.own_ipp_category} />
         <Chip label="Own avg price" value={suggestion.context_used?.own_avg_price_eur} />
         <Chip label="Competitors" value={suggestion.context_used?.nb_concurrents} />
@@ -188,9 +206,9 @@ export default function LLMSuggestionPanel({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {suggestion.rules.map((r) => (
-              <div key={r.rule_id} style={{ fontSize: 12, color: C.text }}>
-                <strong>{r.rule_name}</strong> — coefficient {r.coefficient}
+            {suggestion.rules.map((r, i) => (
+              <div key={r.rule_id || i} style={{ fontSize: 12, color: C.text }}>
+                <strong>{r.rule_name || `Rule ${i + 1}`}</strong> — coefficient {r.coefficient}
               </div>
             ))}
           </div>
