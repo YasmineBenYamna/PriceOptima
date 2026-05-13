@@ -15,3 +15,6 @@ TOKEN_EXPIRE_MINUTES = 60
 # Application
 APP_TITLE   = "Data Pricer API"
 APP_VERSION = "3.0.0"
+
+#GROQ
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")

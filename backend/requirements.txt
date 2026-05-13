@@ -9,3 +9,5 @@ python-multipart
 pandas
 openpyxl
 python-dotenv
+
+groq>=0.9.0

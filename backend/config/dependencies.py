@@ -18,6 +18,9 @@ from services.strategy_service import StrategyService
 from services.pricing_service  import PricingService
 from services.job_service      import JobService
 
+from services.llm_service import LLMService
+from config.settings import GROQ_API_KEY  
+
 # 1. DatabaseManager
 db_manager = DatabaseManager(
     host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD
@@ -35,4 +38,5 @@ product_service  = ProductService(db_manager)
 rule_service     = RuleService(rule_repo)
 strategy_service = StrategyService(strategy_repo, rule_repo)
 pricing_service  = PricingService(db_manager)
+llm_service = LLMService(db_manager, GROQ_API_KEY)
 job_service      = JobService(job_repo, strategy_service, pricing_service)

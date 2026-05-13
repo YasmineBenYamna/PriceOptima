@@ -8,6 +8,11 @@ from config.dependencies import db_manager
 
 from api import auth, products, rules, strategies, pricing, jobs
 
+from api.llm import router as llm_router
+
+from config.database import init_db
+init_db() 
+
 db_manager.create_tables()
 
 app = FastAPI(title=APP_TITLE, version=APP_VERSION)
@@ -28,6 +33,7 @@ app.include_router(rules.router)
 app.include_router(strategies.router)
 app.include_router(pricing.router)
 app.include_router(jobs.router)
+app.include_router(llm_router)
 
 @app.get("/")
 def root():

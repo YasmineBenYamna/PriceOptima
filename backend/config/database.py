@@ -3,6 +3,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
 
+from config.settings import DB_HOST, DB_PASSWORD, DB_PORT, DB_USER
+
 Base = declarative_base()
 
 
@@ -72,3 +74,14 @@ class DatabaseManager:
             yield conn
         finally:
             conn.close()
+            
+def init_db():
+    """Initialise la base au démarrage."""
+    db_manager = DatabaseManager(
+        host=DB_HOST,
+        port=DB_PORT,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+    db_manager.create_tables()
+    print("DB initialisée")

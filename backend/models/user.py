@@ -17,4 +17,5 @@ class User(Base):
     work_mail    = Column(String,   unique=True, nullable=False)
     company_name = Column(String,   nullable=False)
     password     = Column(String,   nullable=False)
+    magasin_id   = Column(String,   nullable=True)
     created_at   = Column(DateTime, default=datetime.utcnow)

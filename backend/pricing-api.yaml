@@ -1,0 +1,1216 @@
+openapi: 3.0.3
+
+info:
+  title: Pricing Engine API
+  version: 1.0.0
+  description: Pricing API contract for auth, rules, strategies, user strategies, pricing engine and jobs.
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: Auth
+  - name: Rules
+  - name: System Strategies
+  - name: User Strategies
+  - name: Pricing Engine
+  - name: Jobs
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              full_name: "Yasmine Ben Yamna"
+              work_mail: "yasmine@example.com"
+              company_name: "RetailLab"
+              password: "StrongPassword123!"
+      responses:
+        "201":
+          description: Registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                access_token: "string"
+                token_type: "bearer"
+                user:
+                  id: "user_001"
+                  full_name: "Yasmine Ben Yamna"
+                  company_name: "RetailLab"
+                  work_mail: "yasmine@example.com"
+        "400":
+          description: Email already used
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "EMAIL_ALREADY_USED"
+                message: "Email already used"
+        "422":
+          description: Validation error from FastAPI / Pydantic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              work_mail: "yasmine@example.com"
+              password: "StrongPassword123!"
+      responses:
+        "200":
+          description: Logged in successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                access_token: "string"
+                token_type: "bearer"
+                user:
+                  id: "user_001"
+                  full_name: "Yasmine Ben Yamna"
+                  company_name: "RetailLab"
+                  work_mail: "yasmine@example.com"
+        "401":
+          description: Invalid email or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "UNAUTHORIZED"
+                message: "Email or password incorrect"
+        "422":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+
+  /rules:
+    get:
+      tags: [Rules]
+      summary: List rules
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Rules list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RulesListResponse'
+              example:
+                rules: []
+                total: 0
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "UNAUTHORIZED"
+                message: "Not authenticated"
+
+  /rules/{id}:
+    get:
+      tags: [Rules]
+      summary: Get rule by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        "200":
+          description: Rule found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleDetail'
+              example:
+                id: "rule_001"
+                name: "Floor Price Rule"
+                active: true
+                params: {}
+                description: "string"
+                is_system: true
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Rule not found"
+
+    put:
+      tags: [Rules]
+      summary: Update rule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleUpdateRequest'
+            example:
+              name: "Updated Rule"
+              active: true
+              params: {}
+      responses:
+        "200":
+          description: Rule updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleUpdateResponse'
+              example:
+                status: "updated"
+                id: "rule_001"
+                name: "Updated Rule"
+                active: true
+                params: {}
+        "400":
+          description: Invalid params
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "INVALID_PARAMS"
+                message: "Invalid rule params"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /strategies:
+    get:
+      tags: [System Strategies]
+      summary: List system strategies
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Strategies list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStrategiesListResponse'
+              example:
+                strategies: []
+                total: 0
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /strategies/{id}:
+    get:
+      tags: [System Strategies]
+      summary: Get system strategy by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        "200":
+          description: Strategy detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyDetail'
+              example:
+                id: "strategy_001"
+                name: "AGGRESSIVE"
+                description: "string"
+                rules: []
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Strategy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Strategy not found"
+
+  /user-strategies:
+    get:
+      tags: [User Strategies]
+      summary: List user strategies
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User strategies list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStrategiesListResponse'
+              example:
+                strategies: []
+                total: 0
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags: [User Strategies]
+      summary: Create user strategy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserStrategyCreateRequest'
+            example:
+              name: "My Custom Strategy"
+              rules:
+                - rule_id: "rule_001"
+                  coefficient: 0.5
+                - rule_id: "rule_002"
+                  coefficient: 0.5
+      responses:
+        "201":
+          description: User strategy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStrategyWriteResponse'
+              example:
+                id: "usr_strategy_001"
+                name: "My Custom Strategy"
+                rules: []
+        "400":
+          description: Business validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                coefficients_sum:
+                  value:
+                    error: "INVALID_COEFFICIENTS_SUM"
+                    message: "Coefficients sum must equal 1"
+                coefficient_range:
+                  value:
+                    error: "INVALID_COEFFICIENT"
+                    message: "Coefficient must be between 0 and 1"
+                rule_not_found:
+                  value:
+                    error: "RULE_NOT_FOUND"
+                    message: "Rule not found"
+                empty_rules:
+                  value:
+                    error: "EMPTY_RULES"
+                    message: "Rules cannot be empty"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          description: Schema invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+
+  /user-strategies/{id}:
+    get:
+      tags: [User Strategies]
+      summary: Get user strategy by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        "200":
+          description: User strategy detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStrategyDetail'
+              example:
+                id: "usr_strategy_001"
+                name: "My Custom Strategy"
+                rules: []
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Forbidden - strategy belongs to another user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "FORBIDDEN"
+                message: "Strategy belongs to another user"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [User Strategies]
+      summary: Update user strategy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserStrategyUpdateRequest'
+            example:
+              name: "Updated Custom Strategy"
+              rules:
+                - rule_id: "rule_001"
+                  coefficient: 0.7
+                - rule_id: "rule_002"
+                  coefficient: 0.3
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStrategyUpdateResponse'
+              example:
+                status: "updated"
+                id: "usr_strategy_001"
+                name: "Updated Custom Strategy"
+                rules: []
+        "400":
+          description: Business validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_sum:
+                  value:
+                    error: "INVALID_COEFFICIENTS_SUM"
+                    message: "Coefficients sum must equal 1"
+                invalid_rule:
+                  value:
+                    error: "RULE_INVALID"
+                    message: "Invalid rule"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [User Strategies]
+      summary: Delete user strategy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /pricing/calculate:
+    post:
+      tags: [Pricing Engine]
+      summary: Calculate price for one product
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PricingCalculateRequest'
+            example:
+              strategy_name: "AGGRESSIVE"
+              product:
+                id: "3017620422003"
+                price: 9.5
+      responses:
+        "200":
+          description: Pricing calculated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingCalculateResponse'
+              example:
+                product_id: "3017620422003"
+                final_price: 9.5
+                contributions: []
+        "400":
+          description: Business error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                empty_strategy:
+                  value:
+                    error: "EMPTY_STRATEGY"
+                    message: "Strategy has no active rules"
+                invalid_product:
+                  value:
+                    error: "INVALID_PRODUCT"
+                    message: "Invalid product id or no data"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Strategy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: DB failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /pricing/calculate-batch:
+    post:
+      tags: [Pricing Engine]
+      summary: Batch pricing calculation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PricingBatchCalculateRequest'
+            example:
+              strategy_name: "AGGRESSIVE"
+              products:
+                - id: "3017620422003"
+                  price: 9.5
+      responses:
+        "200":
+          description: Batch pricing calculated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingBatchCalculateResponse'
+              example:
+                strategy_name: "string"
+                total_processed: 10
+                failed: 0
+                results: []
+                errors: []
+        "400":
+          description: Business error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                empty_products:
+                  value:
+                    error: "EMPTY_PRODUCTS"
+                    message: "Products cannot be empty"
+                empty_strategy:
+                  value:
+                    error: "EMPTY_STRATEGY"
+                    message: "Strategy has no active rules"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Strategy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /jobs:
+    get:
+      tags: [Jobs]
+      summary: List jobs
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Jobs list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobsListResponse'
+              example:
+                stats: {}
+                jobs: []
+                total: 0
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags: [Jobs]
+      summary: Create job
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobCreateRequest'
+            example:
+              user_strategy_id: "usr_strategy_001"
+              strategy_name: "AGGRESSIVE"
+              schedule: "0 2 * * *"
+              products:
+                - id: "3017620422003"
+                  price: 9.5
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobCreateResponse'
+              example:
+                id: "job_001"
+                status: "completed"
+                total_processed: 10
+                price_changes: []
+                errors: []
+        "400":
+          description: Business error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                empty_products:
+                  value:
+                    error: "EMPTY_PRODUCTS"
+                    message: "Products cannot be empty"
+                empty_strategy:
+                  value:
+                    error: "EMPTY_STRATEGY"
+                    message: "Strategy has no active rules"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Strategy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /jobs/{id}:
+    get:
+      tags: [Jobs]
+      summary: Get job detail
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        "200":
+          description: Job detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobDetail'
+              example:
+                job_number: "JOB-XXXX"
+                status: "completed"
+                execution_timeline: []
+                price_changes: []
+                distribution: {}
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [Jobs]
+      summary: Delete job
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: "string"
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [full_name, work_mail, company_name, password]
+      properties:
+        full_name:
+          type: string
+        work_mail:
+          type: string
+          format: email
+        company_name:
+          type: string
+        password:
+          type: string
+          format: password
+          minLength: 8
+
+    LoginRequest:
+      type: object
+      required: [work_mail, password]
+      properties:
+        work_mail:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    User:
+      type: object
+      required: [id, full_name, company_name, work_mail]
+      properties:
+        id:
+          type: string
+        full_name:
+          type: string
+        company_name:
+          type: string
+        work_mail:
+          type: string
+          format: email
+
+    AuthResponse:
+      type: object
+      required: [access_token, token_type, user]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: bearer
+        user:
+          $ref: '#/components/schemas/User'
+
+    RuleDetail:
+      type: object
+      required: [id, name, active, params, description, is_system]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        active:
+          type: boolean
+        params:
+          type: object
+          additionalProperties: true
+        description:
+          type: string
+        is_system:
+          type: boolean
+
+    RuleUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        active:
+          type: boolean
+        params:
+          type: object
+          additionalProperties: true
+        description:
+          type: string
+
+    RuleUpdateResponse:
+      type: object
+      required: [status, id, name, active, params]
+      properties:
+        status:
+          type: string
+          example: updated
+        id:
+          type: string
+        name:
+          type: string
+        active:
+          type: boolean
+        params:
+          type: object
+          additionalProperties: true
+
+    RulesListResponse:
+      type: object
+      required: [rules, total]
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleDetail'
+        total:
+          type: integer
+
+    StrategyRule:
+      type: object
+      properties:
+        rule_id:
+          type: string
+        coefficient:
+          type: number
+          minimum: 0
+          maximum: 1
+        params:
+          type: object
+          additionalProperties: true
+
+    StrategyDetail:
+      type: object
+      required: [id, name, description, rules]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrategyRule'
+
+    SystemStrategiesListResponse:
+      type: object
+      required: [strategies, total]
+      properties:
+        strategies:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrategyDetail'
+        total:
+          type: integer
+
+    UserStrategyDetail:
+      type: object
+      required: [id, name, rules]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrategyRule'
+
+    UserStrategiesListResponse:
+      type: object
+      required: [strategies, total]
+      properties:
+        strategies:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserStrategyDetail'
+        total:
+          type: integer
+
+    UserStrategyCreateRequest:
+      type: object
+      required: [name, rules]
+      properties:
+        name:
+          type: string
+        rules:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/StrategyRule'
+
+    UserStrategyUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrategyRule'
+
+    UserStrategyWriteResponse:
+      type: object
+      required: [id, name, rules]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrategyRule'
+
+    UserStrategyUpdateResponse:
+      type: object
+      required: [status, id, name, rules]
+      properties:
+        status:
+          type: string
+          example: updated
+        id:
+          type: string
+        name:
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrategyRule'
+
+    ProductInput:
+      type: object
+      required: [id, price]
+      properties:
+        id:
+          type: string
+        price:
+          type: number
+
+    RuleContribution:
+      type: object
+      properties:
+        rule_id:
+          type: string
+        rule_name:
+          type: string
+        coefficient:
+          type: number
+        suggested_price:
+          type: number
+        weighted_price:
+          type: number
+        detail:
+          type: string
+
+    PricingCalculateRequest:
+      type: object
+      required: [strategy_name, product]
+      properties:
+        strategy_name:
+          type: string
+        product:
+          $ref: '#/components/schemas/ProductInput'
+
+    PricingCalculateResponse:
+      type: object
+      required: [product_id, final_price, contributions]
+      properties:
+        product_id:
+          type: string
+        final_price:
+          type: number
+        contributions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleContribution'
+
+    PricingBatchCalculateRequest:
+      type: object
+      required: [strategy_name, products]
+      properties:
+        strategy_name:
+          type: string
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductInput'
+
+    PricingBatchItemResult:
+      type: object
+      properties:
+        product_id:
+          type: string
+        final_price:
+          type: number
+        contributions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleContribution'
+
+    PricingBatchCalculateResponse:
+      type: object
+      required: [strategy_name, total_processed, failed, results, errors]
+      properties:
+        strategy_name:
+          type: string
+        total_processed:
+          type: integer
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PricingBatchItemResult'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorItem'
+
+    JobCreateRequest:
+      type: object
+      required: [strategy_name, products]
+      properties:
+        user_strategy_id:
+          type: string
+          nullable: true
+        strategy_name:
+          type: string
+        schedule:
+          type: string
+          nullable: true
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductInput'
+
+    JobCreateResponse:
+      type: object
+      required: [id, status, total_processed, price_changes, errors]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        total_processed:
+          type: integer
+        price_changes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorItem'
+
+    JobDetail:
+      type: object
+      required: [job_number, status, execution_timeline, price_changes, distribution]
+      properties:
+        job_number:
+          type: string
+        status:
+          type: string
+        execution_timeline:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        price_changes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        distribution:
+          type: object
+          additionalProperties: true
+
+    JobSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        job_number:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        total_processed:
+          type: integer
+
+    JobsListResponse:
+      type: object
+      required: [stats, jobs, total]
+      properties:
+        stats:
+          type: object
+          additionalProperties: true
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobSummary'
+        total:
+          type: integer
+
+    ErrorItem:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        product_id:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+    ValidationErrorItem:
+      type: object
+      properties:
+        loc:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: integer
+        msg:
+          type: string
+        type:
+          type: string
+
+    HTTPValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationErrorItem'
