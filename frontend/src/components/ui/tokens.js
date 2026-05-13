@@ -1,81 +1,67 @@
 // src/components/ui/tokens.js
-// Source unique de vérité JS — valeurs SYNCHRONISÉES avec global.css.
-// Les composants React utilisent ces tokens via inline styles.
-// Ne JAMAIS hard-coder des couleurs directement dans les composants.
-
 export const C = {
-  // Surfaces
-  bg:           '#FAFBFF',
-  surface:      '#FFFFFF',
-  surfaceAlt:   '#F8FAFF',
-  border:       '#C5D5EC',
-  divider:      'rgba(197,213,236,0.5)',
+  bg:           '#F7F5F0',
+  surface:      '#FDFCFA',
+  surfaceAlt:   '#F2F0EB',
+  border:       '#E2DDD6',
+  divider:      'rgba(226,221,214,0.5)',
 
-  // Texte
-  text:         '#022448',
-  textMuted:    '#6B7280',
-  textFaint:    '#8AA4CF',
+  text:         '#1C1A17',
+  textMuted:    '#6B6560',
+  textFaint:    '#A09890',
   textInverse:  '#FFFFFF',
 
-  // Accent (orange-brun)
-  accent:       '#A43C12',
-  accentHover:  '#8a3210',
-  accentBg:     '#E8EFFA',
+  accent:       '#2C3E50',
+  accentHover:  '#3D5268',
+  accentBg:     '#E8EBF0',
 
-  // Primaire (navy)
-  primary:      '#1E3A5F',
-  primaryLight: '#2A5298',
+  primary:      '#2C3E50',
+  primaryLight: '#3D5268',
 
-  // États sémantiques
-  success: { bg: '#F0FDF4', text: '#166534', border: '#86EFAC' },
-  info:    { bg: '#EFF6FF', text: '#1D4ED8', border: '#93C5FD' },
-  danger:  { bg: '#FEF2F2', text: '#dc2626', border: '#FECACA' },
-  warning: { bg: '#FFFBEB', text: '#92400E', border: '#FDE68A' },
-  neutral: { bg: '#F4F7FF', text: '#1E3A5F', border: '#8AA4CF' },
+  success: { bg: '#EBF0ED', text: '#4A5D52', border: '#C2D0C9' },
+  info:    { bg: '#E8EBF0', text: '#2C3E50', border: '#C8D2DE' },
+  danger:  { bg: '#F5EDEB', text: '#7A3C2C', border: '#DEC8C2' },
+  warning: { bg: '#F3EDE5', text: '#7A5C3A', border: '#D9C8B4' },
+  neutral: { bg: '#F2F0EB', text: '#6B6560', border: '#E2DDD6' },
 };
 
-// Border-radius en px (pour inline styles)
 export const R = {
   xs:   4,
-  sm:   7,
+  sm:   6,
   md:   9,
-  lg:   12,
-  xl:   16,
-  xxl:  18,
+  lg:   13,
+  xl:   18,
+  xxl:  22,
   full: 9999,
 };
 
-// Ombres
 export const S = {
-  card:   '0 1px 4px rgba(0,0,0,0.04)',
-  md:     '0 4px 16px rgba(0,0,0,0.08)',
-  lg:     '0 16px 48px rgba(0,0,0,0.12)',
-  modal:  '0 24px 64px rgba(0,0,0,0.20)',
-  button: '0 4px 16px rgba(164,60,18,0.28)',
+  card:   '0 1px 3px rgba(28,26,23,0.06)',
+  md:     '0 4px 14px rgba(28,26,23,0.08)',
+  lg:     '0 16px 48px rgba(28,26,23,0.12)',
+  modal:  '0 24px 64px rgba(28,26,23,0.18)',
+  button: '0 4px 14px rgba(44,62,80,0.22)',
 };
 
-// Typographie — tailles en rem synchronisées avec global.css
 export const T = {
-  xs:   '0.6875rem',  // 11px
-  sm:   '0.8125rem',  // 13px
-  base: '0.875rem',   // 14px
-  md:   '0.9375rem',  // 15px
-  lg:   '1.125rem',   // 18px
-  xl:   '1.375rem',   // 22px
-  '2xl':'1.75rem',    // 28px
+  xs:   '0.6875rem',
+  sm:   '0.8125rem',
+  base: '0.875rem',
+  md:   '0.9375rem',
+  lg:   '1.125rem',
+  xl:   '1.375rem',
+  '2xl':'1.75rem',
 };
 
-// Familles de polices
 export const F = {
-  display: "'Sora', sans-serif",
-  body:    "'Inter', sans-serif",
+  display: "'DM Serif Display', Georgia, serif",
+  body:    "'DM Sans', system-ui, sans-serif",
 };
 
-// Statuts de jobs
 export const STATUS = {
-  completed: { bg: '#F0FDF4', color: '#166534', border: '#86EFAC', label: 'Completed' },
-  running:   { bg: '#EFF6FF', color: '#1D4ED8', border: '#93C5FD', label: 'Running'   },
-  failed:    { bg: '#FEF2F2', color: '#dc2626', border: '#FECACA', label: 'Failed'    },
-  pending:   { bg: '#FFFBEB', color: '#92400E', border: '#FDE68A', label: 'Pending'   },
-  scheduled: { bg: '#F4F7FF', color: '#1E3A5F', border: '#8AA4CF', label: 'Scheduled' },
+  completed: { bg: '#EBF0ED', color: '#4A5D52', border: '#C2D0C9', label: 'Completed' },
+  running:   { bg: '#E8EBF0', color: '#2C3E50', border: '#C8D2DE', label: 'Running'   },
+  failed:    { bg: '#F5EDEB', color: '#7A3C2C', border: '#DEC8C2', label: 'Failed'    },
+  pending:   { bg: '#F3EDE5', color: '#7A5C3A', border: '#D9C8B4', label: 'Pending'   },
+  scheduled: { bg: '#F2F0EB', color: '#6B6560', border: '#E2DDD6', label: 'Scheduled' },
 };
