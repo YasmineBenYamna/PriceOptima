@@ -75,6 +75,15 @@ class DatabaseManager:
         finally:
             conn.close()
             
+    @contextmanager
+    def app_conn(self):
+        """Context manager pour une connexion à la base applicative (data_pricer)."""
+        conn = self._app_engine.connect()
+        try:
+            yield conn
+        finally:
+            conn.close()
+            
 def init_db():
     """Initialise la base au démarrage."""
     db_manager = DatabaseManager(
