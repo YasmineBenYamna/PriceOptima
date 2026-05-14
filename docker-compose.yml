@@ -1,0 +1,296 @@
+x-airflow-common: &airflow-common
+  build: .
+  environment: &airflow-common-env
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/airflow_db
+    AIRFLOW_CONN_POSTGRES_RETAIL: "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${MARKET_DB_NAME}"
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LAZY_LOAD_PLUGINS: 'False'
+    AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: "120"
+    AIRFLOW__SCHEDULER__JOB_HEARTBEAT_SEC: "60"
+    AIRFLOW__SCHEDULER__SCHEDULER_HEARTBEAT_SEC: "30"
+    AIRFLOW__SCHEDULER__SCHEDULER_ZOMBIE_TASK_THRESHOLD: "14400"
+    AIRFLOW__SCHEDULER__ZOMBIE_DETECTION_INTERVAL: "120"
+    AIRFLOW__SCHEDULER__SCHEDULER_HEALTH_CHECK_THRESHOLD: "1200"
+    AIRFLOW__SCHEDULER__LOCAL_TASK_JOB_HEARTBEAT_SEC: "60"
+    AIRFLOW__TASK__HEARTBEAT_TIMEOUT: "14400"
+    AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "120"
+    AIRFLOW__SCHEDULER__PARSING_PROCESSES: "2"
+    AIRFLOW__CORE__PARALLELISM: "4"
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "4"
+    AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: "1"
+    AIRFLOW__CORE__KILLED_TASK_CLEANUP_TIME: "14400"
+    AIRFLOW__SCHEDULER__MAX_TIS_PER_QUERY: "8"
+    AIRFLOW__SCHEDULER__MAX_DAGRUNS_PER_LOOP_TO_SCHEDULE: "1"
+    AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: "60"
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE: "2"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE: "1800"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING: "True"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW: "3"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_TIMEOUT: "60"
+    POSTGRES_HOST: ${DB_HOST}
+    POSTGRES_PORT: ${DB_PORT}
+    POSTGRES_USER: ${DB_USER}
+    POSTGRES_PASSWORD: ${DB_PASSWORD}
+    POSTGRES_DB: ${MARKET_DB_NAME}
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - airflow_tmp:/tmp
+    - ./sqlmesh:/opt/airflow/sqlmesh
+    - ./data:/opt/airflow/data
+    - ./plugins:/opt/airflow/plugins
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  dns:
+    - 8.8.8.8
+    - 8.8.4.4
+  networks:
+    - airflow-net
+
+
+services:
+
+  # -----------------------------------------
+  # DATABASE
+  # -----------------------------------------
+  postgres:
+    image: postgres:17
+    shm_size: '2gb'
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: airflow_db
+      PGDATA: /var/lib/postgresql/data
+    command: >
+      postgres
+        -c synchronous_commit=off
+        -c shared_buffers=2GB
+        -c work_mem=256MB
+        -c maintenance_work_mem=1GB
+        -c max_wal_size=2GB
+        -c max_connections=50
+        -c tcp_keepalives_idle=30
+        -c tcp_keepalives_interval=5
+        -c tcp_keepalives_count=10
+        -c idle_in_transaction_session_timeout=1800000
+        -c statement_timeout=0
+        -c effective_cache_size=4GB
+        -c checkpoint_completion_target=0.9
+        -c wal_buffers=64MB
+        -c random_page_cost=1.1
+        -c max_parallel_workers_per_gather=4
+        -c max_parallel_workers=8
+        -c max_worker_processes=8
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - airflow-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 6g
+          cpus: '4.0'
+        reservations:
+          memory: 2g
+          cpus: '1.0'
+
+
+  # -----------------------------------------
+  # AIRFLOW
+  # -----------------------------------------
+  airflow-init:
+    <<: *airflow-common
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["bash", "-c", "airflow db migrate && (airflow users create --username admin --password ${AIRFLOW_ADMIN_PASSWORD} --firstname Admin --lastname Admin --role Admin --email admin@datapricer.com || true)"]
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: '2.0'
+
+
+  airflow-webserver:
+    <<: *airflow-common
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW__WEBSERVER__WORKERS: "1"
+      AIRFLOW__WEBSERVER__WORKER_TIMEOUT: "600"
+      AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT: "600"
+    ports:
+      - "8080:8080"
+    command: ["bash", "-c", "rm -f /opt/airflow/airflow-webserver.pid && airflow webserver --workers 1 --worker-timeout 600"]
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: '1.0'
+        reservations:
+          memory: 512m
+          cpus: '0.2'
+
+
+  airflow-scheduler:
+    <<: *airflow-common
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    command: ["airflow", "scheduler"]
+    restart: always
+    sysctls:
+      net.ipv4.tcp_keepalive_time: 30
+      net.ipv4.tcp_keepalive_intvl: 5
+      net.ipv4.tcp_keepalive_probes: 10
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW__SCHEDULER__JOB_HEARTBEAT_SEC: "60"
+      AIRFLOW__SCHEDULER__LOCAL_TASK_JOB_HEARTBEAT_SEC: "60"
+      AIRFLOW__SCHEDULER__SCHEDULER_HEALTH_CHECK_THRESHOLD: "1200"
+      AIRFLOW__SCHEDULER__SCHEDULER_ZOMBIE_TASK_THRESHOLD: "14400"
+      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "120"
+      AIRFLOW__SCHEDULER__PARSING_PROCESSES: "2"
+      PYTHONUNBUFFERED: "1"
+      POLARS_MAX_THREADS: "4"
+      POLARS_VERBOSE: "0"
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+          cpus: '4.0'
+        reservations:
+          memory: 2g
+          cpus: '1.0'
+
+
+  # -----------------------------------------
+  # BACKEND - FastAPI
+  # -----------------------------------------
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_HOST: postgres        # ← forcer le nom du service Docker, pas ${DB_HOST}
+      POSTGRES_PORT: 5432            # ← port interne Docker, pas 5433
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${MARKET_DB_NAME}
+      APP_DB_NAME: ${APP_DB_NAME}
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      SUPERSET_URL: http://superset:8088
+      SUPERSET_DASHBOARD_ID: "97c6d11e-ee47-48bd-8d4e-8fe4717a7723"
+      SUPERSET_ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+    networks:
+      - airflow-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
+
+
+  # -----------------------------------------
+  # FRONTEND - React + Vite
+  # -----------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_SUPERSET_URL: "http://localhost:8088"
+        VITE_SUPERSET_DASHBOARD_ID: "97c6d11e-ee47-48bd-8d4e-8fe4717a7723"
+    ports:
+      - "3000:3000"
+    networks:
+      - airflow-net
+    depends_on:
+      - backend
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
+
+
+  # -----------------------------------------
+  # DASHBOARD - Apache Superset
+  # -----------------------------------------
+  superset:
+    image: apache/superset:3.1.0
+    container_name: superset
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME}
+      ADMIN_FIRSTNAME: Admin
+      ADMIN_LASTNAME: Admin
+      ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
+      DATABASE_HOST: ${DB_HOST}
+      DATABASE_PORT: ${DB_PORT}
+      DATABASE_USER: ${DB_USER}
+      DATABASE_PASSWORD: ${DB_PASSWORD}
+      DATABASE_DB: superset_db
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      MARKET_DB_NAME: ${MARKET_DB_NAME}
+      APP_DB_NAME: ${APP_DB_NAME}
+      PYTHONPATH: /app
+    volumes:
+      - ./superset_config.py:/app/superset_config.py:ro
+      - ./init_superset.py:/app/init_superset.py:ro
+      - superset_data:/app/superset_home
+    ports:
+      - "8088:8088"
+    networks:
+      - airflow-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["bash", "-c", "pip install psycopg2-binary --quiet && python /app/init_superset.py && gunicorn --bind 0.0.0.0:8088 --workers 2 --worker-class gthread --threads 4 --timeout 120 --limit-request-line 0 --limit-request-field_size 0 'superset.app:create_app()'"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1500m
+          cpus: '1.0'
+        reservations:
+          memory: 512m
+          cpus: '0.2'
+
+
+networks:
+  airflow-net:
+    driver: bridge
+
+
+volumes:
+  postgres_data:
+  airflow_tmp:
+  superset_data:

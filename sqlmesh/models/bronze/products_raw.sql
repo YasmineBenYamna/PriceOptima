@@ -1,0 +1,81 @@
+MODEL (
+  name        bronze.products_raw,
+  kind        INCREMENTAL_BY_UNIQUE_KEY (
+    unique_key  code
+  ),
+  description 'Couche Bronze — sélection des colonnes utiles de products_raw. Aucune transformation métier.',
+  columns (
+    code                        TEXT,
+    data_source                 TEXT,
+    product_name                TEXT,
+    generic_name                TEXT,
+    quantity                    TEXT,
+    brands                      TEXT,
+    brands_tags                 TEXT,
+    categories_tags             TEXT,
+    labels_tags                 TEXT,
+    origins_tags                TEXT,
+    manufacturing_places        TEXT,
+    packaging_tags              TEXT,
+    countries_tags              TEXT,
+    ingredients_text            TEXT,
+    ingredients_tags            TEXT,
+    ingredients_analysis_tags   TEXT,
+    traces_tags                 TEXT,
+    nutriscore_grade            TEXT,
+    completeness                NUMERIC,
+    link                        TEXT,
+    max_imgid                   INT,
+    images                      TEXT,
+    created_t                   BIGINT,
+    last_modified_t             BIGINT,
+    last_updated_t              BIGINT,
+    last_image_t                BIGINT,
+    created_api                 TIMESTAMP,
+    updated_api                 TIMESTAMP,
+    obsolete                    BOOLEAN,
+    inserted_at                 TIMESTAMP,
+    updated_at                  TIMESTAMP,
+    _ingestion_run_id           TEXT
+  )
+);
+
+SELECT
+  code,
+  data_source,
+  product_name,
+  generic_name,
+  quantity,
+  brands,
+  brands_tags,
+  categories_tags,
+  labels_tags,
+  origins_tags,
+  manufacturing_places,
+  packaging_tags,
+  countries_tags,
+  ingredients_text,
+  ingredients_tags,
+  ingredients_analysis_tags,
+  traces_tags,
+  nutriscore_grade,
+  completeness,
+  link,
+  max_imgid,
+  images,
+  created_t,
+  last_modified_t,
+  last_updated_t,
+  last_image_t,
+  created_api,
+  updated_api,
+  obsolete,
+  inserted_at,
+  updated_at,
+  _ingestion_run_id::TEXT
+FROM (
+  SELECT *,
+    ROW_NUMBER() OVER (PARTITION BY code ORDER BY updated_at DESC NULLS LAST) AS rn
+  FROM public.products_raw
+) t
+WHERE rn = 1
