@@ -1,0 +1,35 @@
+<<<<<<< HEAD
+__pycache__/
+*.pyc
+logs/
+=======
+# Données brutes
+data/
+*.parquet
+*.jsonl
+*.jsonl.gz
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Logs Airflow & SQLMesh
+logs/
+sqlmesh/logs/
+
+# Cache SQLMesh
+sqlmesh/.cache/
+
+# Backup base de données
+retail_pricing_backup.sql
+
+.env
+
+*.log
+logs/
+docker-build.log
+
+docker
+>>>>>>> 1c2c79d1cc830084d295f0412520ff3aa42dbaa2

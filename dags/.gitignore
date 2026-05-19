@@ -1,0 +1,5 @@
+logs/          # Ignorer le dossier des logs d'Airflow
+tmp/           # Ignorer le dossier temporaire
+__pycache__/   # Ignorer les fichiers compilés Python
+*.pyc          # Ignorer tous les fichiers .pyc
+data/          # Ignorer le dossier data (tes fichiers .parquet lourds)

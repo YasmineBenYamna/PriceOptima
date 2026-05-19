@@ -1,0 +1,363 @@
+x-airflow-common: &airflow-common
+  build: .
+  environment: &airflow-common-env
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:admin123@postgres:5432/airflow_db
+    AIRFLOW_CONN_POSTGRES_RETAIL: "postgresql://postgres:admin123@postgres:5432/retail_pricing"
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LAZY_LOAD_PLUGINS: 'False'
+    AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: "120"
+    AIRFLOW__SCHEDULER__JOB_HEARTBEAT_SEC: "60"
+    AIRFLOW__SCHEDULER__SCHEDULER_HEARTBEAT_SEC: "30"
+    AIRFLOW__SCHEDULER__SCHEDULER_ZOMBIE_TASK_THRESHOLD: "14400"
+    AIRFLOW__SCHEDULER__ZOMBIE_DETECTION_INTERVAL: "120"
+    AIRFLOW__SCHEDULER__SCHEDULER_HEALTH_CHECK_THRESHOLD: "1200"
+    AIRFLOW__SCHEDULER__LOCAL_TASK_JOB_HEARTBEAT_SEC: "60"
+    AIRFLOW__TASK__HEARTBEAT_TIMEOUT: "14400"
+    AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "120"
+    AIRFLOW__SCHEDULER__PARSING_PROCESSES: "1"
+    AIRFLOW__CORE__PARALLELISM: "1"
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "1"
+    AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: "1"
+    AIRFLOW__CORE__KILLED_TASK_CLEANUP_TIME: "14400"
+    AIRFLOW__SCHEDULER__MAX_TIS_PER_QUERY: "8"
+    AIRFLOW__SCHEDULER__MAX_DAGRUNS_PER_LOOP_TO_SCHEDULE: "1"
+    AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: "60"
+    AIRFLOW__WEBSERVER__SECRET_KEY: "leclerc_fixed_secret_key_2024_xK9p"
+    AIRFLOW__CORE__FERNET_KEY: "fXxWqMi6HEobzO70LBLsAc-Qjd1ZXQPxmHRPHljwWps="
+    AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE: "2"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE: "1800"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING: "True"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW: "3"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_TIMEOUT: "60"
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: admin123
+    POSTGRES_DB: retail_pricing
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - airflow_tmp:/tmp
+    - ./sqlmesh:/opt/airflow/sqlmesh
+    - ./data:/opt/airflow/data
+    - ./plugins:/opt/airflow/plugins
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  dns:
+    - 8.8.8.8
+    - 8.8.4.4
+  networks:
+    - airflow-net
+
+
+services:
+
+  postgres:
+    image: postgres:17
+    shm_size: '256mb'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: airflow_db
+      PGDATA: /var/lib/postgresql/data
+    command: >
+      postgres
+        -c synchronous_commit=off
+        -c shared_buffers=128MB
+        -c work_mem=16MB
+        -c maintenance_work_mem=64MB
+        -c max_wal_size=512MB
+        -c max_connections=50
+        -c tcp_keepalives_idle=30
+        -c tcp_keepalives_interval=5
+        -c tcp_keepalives_count=10
+        -c idle_in_transaction_session_timeout=1800000
+        -c statement_timeout=0
+        -c effective_cache_size=512MB
+        -c checkpoint_completion_target=0.9
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    networks:
+      - airflow-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          cpus: '1.5'
+        reservations:
+          memory: 512m
+          cpus: '0.5'
+
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@leclerc.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    networks:
+      - airflow-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  # ─────────────────────────────────────────
+  # REDIS — Message broker pour Celery
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - airflow-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: '0.25'
+
+  airflow-init:
+    <<: *airflow-common
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      bash -c "
+        airflow db check && echo 'DB already initialized, skipping' ||
+        (airflow db upgrade &&
+        airflow users create
+        --username admin --password admin123
+        --firstname Admin --lastname Admin
+        --role Admin --email admin@leclerc.com || true)
+      "
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: '2.0'
+
+  airflow-webserver:
+    <<: *airflow-common
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW__WEBSERVER__WORKERS: "1"
+      AIRFLOW__WEBSERVER__WORKER_TIMEOUT: "600"
+      AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT: "600"
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "rm -f /opt/airflow/airflow-webserver.pid &&
+               airflow webserver --workers 1 --worker-timeout 600"
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+          cpus: '0.5'
+        reservations:
+          memory: 256m
+          cpus: '0.2'
+
+  airflow-scheduler:
+    <<: *airflow-common
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    command: airflow scheduler
+    restart: always
+    sysctls:
+      net.ipv4.tcp_keepalive_time: 30
+      net.ipv4.tcp_keepalive_intvl: 5
+      net.ipv4.tcp_keepalive_probes: 10
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW__SCHEDULER__JOB_HEARTBEAT_SEC: "60"
+      AIRFLOW__SCHEDULER__LOCAL_TASK_JOB_HEARTBEAT_SEC: "60"
+      AIRFLOW__SCHEDULER__SCHEDULER_HEALTH_CHECK_THRESHOLD: "1200"
+      AIRFLOW__SCHEDULER__SCHEDULER_ZOMBIE_TASK_THRESHOLD: "14400"
+      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "120"
+      AIRFLOW__SCHEDULER__PARSING_PROCESSES: "1"
+      PYTHONUNBUFFERED: "1"
+      POLARS_MAX_THREADS: "2"
+      POLARS_VERBOSE: "0"
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: '2.0'
+        reservations:
+          memory: 1g
+          cpus: '1.0'
+
+  # ─────────────────────────────────────────
+  # BACKEND — FastAPI
+  # ─────────────────────────────────────────
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: retail_pricing
+      APP_DB_NAME: data_pricer
+      SECRET_KEY: data_pricer_secret_2026
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      SUPERSET_URL: http://superset:8088
+      SUPERSET_DASHBOARD_ID: "97c6d11e-ee47-48bd-8d4e-8fe4717a7723"
+      SUPERSET_ADMIN_USERNAME: admin
+      SUPERSET_ADMIN_PASSWORD: admin123
+      GROQ_API_KEY: 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
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    networks:
+      - airflow-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
+
+  # ─────────────────────────────────────────
+  # CELERY WORKER — Exécution async des jobs
+  # ─────────────────────────────────────────
+  celery-worker:
+    build: ./backend
+    command: celery -A celery_app.celery worker --loglevel=info --concurrency=2
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: retail_pricing
+      APP_DB_NAME: data_pricer
+      SECRET_KEY: data_pricer_secret_2026
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      GROQ_API_KEY: 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
+    networks:
+      - airflow-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
+
+  # ─────────────────────────────────────────
+  # FRONTEND — React + Vite + Nginx
+  # ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_SUPERSET_URL: "http://localhost:8088"
+        VITE_SUPERSET_DASHBOARD_ID: "97c6d11e-ee47-48bd-8d4e-8fe4717a7723"
+    ports:
+      - "3000:80"
+    networks:
+      - airflow-net
+    depends_on:
+      - backend
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
+
+  # ─────────────────────────────────────────
+  # DASHBOARD - Apache Superset
+  # ─────────────────────────────────────────
+  superset:
+    image: apache/superset:3.1.0
+    environment:
+      SUPERSET_SECRET_KEY: "superset_secret_key_2024_leclerc"
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+      ADMIN_EMAIL: admin@leclerc.com
+      ADMIN_FIRSTNAME: Admin
+      ADMIN_LASTNAME: Admin
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: admin123
+      DATABASE_DB: superset_db
+      SUPERSET_WEBSERVER_TIMEOUT: "120"
+      TALISMAN_ENABLED: "False"
+      WTF_CSRF_ENABLED: "False"
+    ports:
+      - "8088:8088"
+    networks:
+      - airflow-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - superset_data:/app/superset_home
+      - ./superset_config.py:/app/pythonpath/superset_config.py
+    command: >
+      bash -c "
+        pip install psycopg2-binary --quiet &&
+        superset db upgrade &&
+        superset fab create-admin --username admin --firstname Admin --lastname Admin --email admin@leclerc.com --password admin123 || true &&
+        superset init &&
+        gunicorn --bind 0.0.0.0:8088 --workers 2 --timeout 120 'superset.app:create_app()'
+      "
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1500m
+          cpus: '1.0'
+
+networks:
+  airflow-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  airflow_tmp:
+  superset_data:
