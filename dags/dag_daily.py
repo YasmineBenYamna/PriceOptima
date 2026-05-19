@@ -1,6 +1,5 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.operators.empty import EmptyOperator
 from airflow.operators.bash import BashOperator
 from airflow.utils.dates import days_ago
 from datetime import datetime, timedelta
@@ -15,16 +14,16 @@ def _fetch_and_insert_delta_products(**context):
     fetch_and_insert_delta_products(**context)
 
 def _update_currency_daily(**context):
-    from utils.tasks_daily import update_currency_daily # ← import différé pour éviter les dépendances inutiles
+    from utils.tasks_daily import update_currency_daily
     update_currency_daily(**context)
 
 default_args = {
-    "owner"          : os.environ.get("AIRFLOW_DAG_OWNER", "airflow"),
-    "depends_on_past": False,
-    "retries"        : int(os.environ.get("AIRFLOW_DEFAULT_RETRIES", 1)),
-    "retry_delay"    : timedelta(minutes=int(os.environ.get("AIRFLOW_RETRY_DELAY_MINUTES", 5))),
+    "owner"           : os.environ.get("AIRFLOW_DAG_OWNER", "airflow"),
+    "depends_on_past" : False,
+    "retries"         : int(os.environ.get("AIRFLOW_DEFAULT_RETRIES", 1)),
+    "retry_delay"     : timedelta(minutes=int(os.environ.get("AIRFLOW_RETRY_DELAY_MINUTES", 5))),
     "email_on_failure": False,
-    "email_on_retry" : False,
+    "email_on_retry"  : False,
 }
 
 with DAG(
@@ -53,7 +52,7 @@ with DAG(
 
     t3 = PythonOperator(
         task_id="currency_daily",
-        python_callable=_update_currency_daily,  # wrapper différé
+        python_callable=_update_currency_daily,
         execution_timeout=timedelta(minutes=30),
     )
 
@@ -63,16 +62,11 @@ with DAG(
         set -euo pipefail
         cd /opt/airflow/sqlmesh
 
-        echo "[1/2] Run UNIQUE_KEY — tous les modeles explicitement..."
+        echo "[1/2] Delta fx uniquement..."
         sqlmesh run prod --ignore-cron \
-            --select-model 'bronze.products_raw' \
-            --select-model 'bronze.exchange_rates_raw' \
-            --select-model 'silver.brand' \
-            --select-model 'silver.category' \
-            --select-model 'silver.products' \
-            --select-model 'silver.product_category'
+            --select-model 'bronze.exchange_rates_raw'
 
-        echo "[2/2] Restate prices_raw → cascade downstream automatique..."
+        echo "[2/2] Restate prices {{ ds }} + cascade downstream..."
         sqlmesh plan prod --no-prompts --auto-apply \
             --restate-model 'bronze.prices_raw' \
             --start {{ ds }} \
@@ -80,6 +74,8 @@ with DAG(
             --run
     """,
     execution_timeout=timedelta(hours=1),
+    retries=1,
+    retry_delay=timedelta(minutes=5),
 )
-    
+
     t1 >> t2 >> t3 >> t4
