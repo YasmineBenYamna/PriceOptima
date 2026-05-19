@@ -1,0 +1,27 @@
+gateways:
+  postgres:
+    connection:
+      type: postgres
+      host: postgres
+      user: postgres
+      password: admin123
+      port: 5432
+      database: retail_pricing
+
+  local:
+    connection:
+      type: postgres
+      host: localhost
+      user: postgres
+      password: admin123
+      port: 5433
+      database: retail_pricing
+
+default_gateway: postgres
+
+model_defaults:
+  dialect: postgres
+  start: 2023-12-01
+
+variables:
+  bronze_schema: public

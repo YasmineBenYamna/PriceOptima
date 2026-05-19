@@ -93,8 +93,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 60s
+      retries: 30
+      start_period: 180s
     deploy:
       resources:
         limits:
@@ -113,7 +113,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["bash", "-c", "airflow db migrate && (airflow users create --username admin --password ${AIRFLOW_ADMIN_PASSWORD} --firstname Admin --lastname Admin --role Admin --email admin@datapricer.com || true)"]
+    command: ["bash", "-c", "
+      airflow db migrate &&
+      (airflow users create --username admin --password ${AIRFLOW_ADMIN_PASSWORD} --firstname Admin --lastname Admin --role Admin --email admin@datapricer.com || true)
+    "]
     restart: "no"
     deploy:
       resources:
@@ -141,8 +144,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g
-          cpus: '1.0'
+          memory: 4g
+          cpus: '2.0'
         reservations:
           memory: 512m
           cpus: '0.2'

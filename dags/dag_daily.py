@@ -4,8 +4,7 @@ from airflow.operators.empty import EmptyOperator
 from airflow.operators.bash import BashOperator
 from airflow.utils.dates import days_ago
 from datetime import datetime, timedelta
-
-
+import os
 
 def _fetch_and_insert_prices(**context):
     from utils.tasks_daily import fetch_and_insert_prices
@@ -15,31 +14,27 @@ def _fetch_and_insert_delta_products(**context):
     from utils.tasks_daily import fetch_and_insert_delta_products
     fetch_and_insert_delta_products(**context)
 
-def _compute_coverage_stats(**context):
-    from utils.tasks_daily import compute_coverage_stats
-    compute_coverage_stats(**context)
-
 def _update_currency_daily(**context):
     from utils.tasks_daily import update_currency_daily # ← import différé pour éviter les dépendances inutiles
     update_currency_daily(**context)
 
 default_args = {
-    "owner": "airflow",
+    "owner"          : os.environ.get("AIRFLOW_DAG_OWNER", "airflow"),
     "depends_on_past": False,
-    "retries": 1,
-    "retry_delay": timedelta(minutes=5),
+    "retries"        : int(os.environ.get("AIRFLOW_DEFAULT_RETRIES", 1)),
+    "retry_delay"    : timedelta(minutes=int(os.environ.get("AIRFLOW_RETRY_DELAY_MINUTES", 5))),
+    "email_on_failure": False,
+    "email_on_retry" : False,
 }
 
 with DAG(
     dag_id="dag_data_enrichment",
     start_date=days_ago(1),
     schedule_interval="@daily",
-    catchup=False,
+    catchup=True,
     default_args=default_args,
     max_active_runs=1,
 ) as dag:
-
-    start = EmptyOperator(task_id="start")
 
     t1 = PythonOperator(
         task_id="fetch_and_insert_prices",
@@ -57,24 +52,34 @@ with DAG(
     )
 
     t3 = PythonOperator(
-        task_id="compute_coverage_stats",
-        python_callable=_compute_coverage_stats,
-        execution_timeout=timedelta(minutes=30),
-    )
-
-    t4 = PythonOperator(
         task_id="currency_daily",
         python_callable=_update_currency_daily,  # wrapper différé
         execution_timeout=timedelta(minutes=30),
     )
 
-    t5 = BashOperator(
+    t4 = BashOperator(
     task_id="run_sqlmesh_transformation",
-    bash_command=(
-        "cd /opt/airflow/sqlmesh && "
-        "sqlmesh clean && "          # ← purge le cache corrompu
-        "sqlmesh run --skip-janitor"
-    ),
-    execution_timeout=timedelta(hours=2),
+    bash_command="""
+        set -euo pipefail
+        cd /opt/airflow/sqlmesh
+
+        echo "[1/2] Run UNIQUE_KEY — tous les modeles explicitement..."
+        sqlmesh run prod --ignore-cron \
+            --select-model 'bronze.products_raw' \
+            --select-model 'bronze.exchange_rates_raw' \
+            --select-model 'silver.brand' \
+            --select-model 'silver.category' \
+            --select-model 'silver.products' \
+            --select-model 'silver.product_category'
+
+        echo "[2/2] Restate prices_raw → cascade downstream automatique..."
+        sqlmesh plan prod --no-prompts --auto-apply \
+            --restate-model 'bronze.prices_raw' \
+            --start {{ ds }} \
+            --end {{ ds }} \
+            --run
+    """,
+    execution_timeout=timedelta(hours=1),
 )
-    start >> t1 >> t2 >> t3 >> t4 >> t5
+    
+    t1 >> t2 >> t3 >> t4
