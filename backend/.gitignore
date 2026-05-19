@@ -1,9 +1,0 @@
-__pycache__/
-*.pyc
-logs/
-__pycache__/
-*.pyc
-.env
-*.jsonl
-*.db
-.data
