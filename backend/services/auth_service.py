@@ -46,12 +46,11 @@ class AuthService:
         except Exception:
             return False
     def _resolve_magasin_id(self, company_name: str, db_manager) -> str | None:
-        """Résout le magasin_id depuis silver.magasin via company_name."""
         try:
             with db_manager.market_conn() as conn:
                 result = conn.execute(
                     text("""
-                        SELECT MD5(nom_enseigne)
+                        SELECT magasin_id
                         FROM silver.magasin
                         WHERE nom_enseigne ILIKE :name
                         LIMIT 1
@@ -62,7 +61,6 @@ class AuthService:
                 return row[0] if row else None
         except Exception:
             return None
-
     def register(self, body, db_manager) -> dict:
         """Inscrit un nouvel utilisateur et retourne un token JWT."""
         if self._user_repo.find_by_email(body.work_mail):

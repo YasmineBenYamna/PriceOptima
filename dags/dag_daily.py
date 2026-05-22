@@ -1,6 +1,7 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
+from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.utils.dates import days_ago
 from datetime import datetime, timedelta
 import os
@@ -57,25 +58,39 @@ with DAG(
     )
 
     t4 = BashOperator(
-    task_id="run_sqlmesh_transformation",
-    bash_command="""
+        task_id="run_sqlmesh_transformation",
+        bash_command="""
         set -euo pipefail
         cd /opt/airflow/sqlmesh
 
-        echo "[1/2] Delta fx uniquement..."
+        echo "[1/3] Sync exchange rates..."
         sqlmesh run prod --ignore-cron \
             --select-model 'bronze.exchange_rates_raw'
 
-        echo "[2/2] Restate prices {{ ds }} + cascade downstream..."
-        sqlmesh plan prod --no-prompts --auto-apply \
-            --restate-model 'bronze.prices_raw' \
-            --start {{ ds }} \
-            --end {{ ds }} \
-            --run
-    """,
-    execution_timeout=timedelta(hours=1),
-    retries=1,
-    retry_delay=timedelta(minutes=5),
-)
+        echo "[2/3] Run incremental models..."
+        sqlmesh run prod --ignore-cron \
+            --select-model 'bronze.prices_raw' \
+            --select-model 'silver.prices' \
+            --select-model 'silver.prices_errors'
 
+        echo "[3/3] Run FULL + weekly models..."
+        sqlmesh run prod \
+            --select-model 'silver.store' \
+            --select-model 'silver.magasin' \
+            --select-model 'silver.temps' \
+            --select-model 'silver.prices_recovery' \
+            --select-model 'silver.brand' \
+            --select-model 'silver.category' \
+            --select-model 'silver.product_category' \
+            --select-model 'silver.products' \
+            --select-model 'bronze.products_raw' \
+            --select-model 'gold.dm_store_network' \
+            --select-model 'gold.dm_pricing_performance' \
+            --select-model 'gold.dm_market_positioning'
+        """,
+        execution_timeout=timedelta(hours=2),
+        retries=1,
+        retry_delay=timedelta(minutes=5),
+    )
+    
     t1 >> t2 >> t3 >> t4

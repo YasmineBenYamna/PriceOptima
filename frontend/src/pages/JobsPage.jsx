@@ -299,7 +299,6 @@ export default function JobsPage() {
                       Strategy: <strong>{job.strategy_name}</strong>
                     </div>
                     <div style={{ display: 'flex', gap: 16, fontFamily: F.body, fontSize: 11, color: C.textFaint }}>
-                      <span>{job.total_processed} products processed</span>
                       {job.average_delta !== undefined && (
                         <span style={{
                           color:      job.average_delta < 0 ? C.success.text : job.average_delta > 0 ? C.danger.text : C.textFaint,

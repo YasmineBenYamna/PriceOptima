@@ -3,6 +3,7 @@ MODEL (
   kind        INCREMENTAL_BY_UNIQUE_KEY (
     unique_key  (product_code, category_tag)
   ),
+  cron   '@weekly',          -- ← ajouter
   grain       (product_code, category_tag),
   description 'Table de liaison N-N entre products et category. Un produit peut appartenir à plusieurs catégories OFF (hiérarchie du général au spécifique). Le champ rank indique la position dans categories_tags : 0 = catégorie racine la plus générale, MAX = catégorie feuille la plus spécifique.'
 );

@@ -3,6 +3,8 @@ MODEL (
   kind        INCREMENTAL_BY_UNIQUE_KEY (
     unique_key  category_tag
   ),
+  cron   '@weekly',          -- ← ajouter
+
   grain       (category_id),
   description 'Référentiel des catégories Silver. Extrait et normalisé depuis categories_tags (format liste Python OFF). Toutes langues conservées (en:, fr:, nl:, it:, de:, es:...). Enrichi avec product_count et category_name lisible.'
 );

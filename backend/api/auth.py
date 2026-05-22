@@ -3,7 +3,7 @@ from typing import Optional
 from schemas.auth import RegisterBody, LoginBody
 from config.dependencies import auth_service, db_manager
 
-router = APIRouter(tags=["Auth"])
+router = APIRouter(prefix="/api/v1", tags=["Auth"])
 
 @router.post("/auth/register", status_code=201)
 def register(body: RegisterBody):

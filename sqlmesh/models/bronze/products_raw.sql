@@ -1,8 +1,11 @@
 MODEL (
   name        bronze.products_raw,
   kind        INCREMENTAL_BY_UNIQUE_KEY (
-    unique_key  code
+    unique_key  code,
+    batch_size  50000
   ),
+  stamp       'v2',
+  cron        '@weekly',
   description 'Couche Bronze — sélection des colonnes utiles de products_raw. Aucune transformation métier.',
   columns (
     code                        TEXT,
@@ -77,5 +80,6 @@ FROM (
   SELECT *,
     ROW_NUMBER() OVER (PARTITION BY code ORDER BY updated_at DESC NULLS LAST) AS rn
   FROM public.products_raw
+  WHERE updated_at >= CURRENT_DATE - INTERVAL '8 days'
 ) t
 WHERE rn = 1

@@ -59,3 +59,10 @@ class DatabaseManager:
             yield conn
         finally:
             conn.close()
+    @contextmanager
+    def app_conn(self):
+        conn = self._app_engine.connect()
+        try:
+            yield conn
+        finally:
+            conn.close()

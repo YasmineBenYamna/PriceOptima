@@ -2,6 +2,8 @@
 import os
 from functools import lru_cache
 
+import os
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 class Settings:
     # Base de données

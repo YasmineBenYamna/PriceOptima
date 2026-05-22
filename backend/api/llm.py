@@ -5,7 +5,7 @@ import json
 from schemas.llm import LLMSuggestRequest
 from config.dependencies import auth_service, llm_service
 
-router = APIRouter(prefix="/api/v1/llm", tags=["LLM"])
+router = APIRouter(prefix="/api/v1/pricing", tags=["LLM"])
 
 @router.post("/suggest-strategy")
 def suggest_strategy(

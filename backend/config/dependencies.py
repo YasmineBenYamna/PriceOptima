@@ -2,6 +2,8 @@
 Câblage manuel des dépendances.
 Chaîne : DatabaseManager → Repositories → Services → API
 """
+import os
+
 from config.database import DatabaseManager
 
 from repositories.user_repository          import UserRepository
@@ -16,6 +18,9 @@ from services.rule_service     import RuleService
 from services.strategy_service import StrategyService
 from services.pricing_service  import PricingService
 from services.job_service      import JobService
+
+from services.llm_service import LLMService
+from config.settings import GROQ_API_KEY
 
 # 1. DatabaseManager
 db_manager = DatabaseManager()
@@ -34,3 +39,8 @@ rule_service     = RuleService(rule_repo)
 strategy_service = StrategyService(strategy_repo, rule_repo, strategy_rule_repo)
 pricing_service  = PricingService(db_manager)
 job_service      = JobService(job_repo, strategy_service, pricing_service)
+
+llm_service = LLMService(
+    db_manager=db_manager,
+    groq_api_key=os.getenv("GROQ_API_KEY", ""),
+)

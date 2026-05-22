@@ -3,6 +3,7 @@ MODEL (
   kind        INCREMENTAL_BY_UNIQUE_KEY (
     unique_key  brand_tag
   ),
+  cron   '@weekly',          -- ← ajouter
   grain       (brand_id),
   description 'Référentiel des marques Silver. Extrait et normalisé depuis brands_tags (format liste Python OFF). Dédupliqué sur brand_tag. Enrichi avec product_count et brand_name lisible.',
   -- ✅ CHANGEMENT 1 : ajout des types explicites pour éviter l'erreur

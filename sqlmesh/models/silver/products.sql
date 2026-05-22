@@ -3,6 +3,7 @@ MODEL (
   kind        INCREMENTAL_BY_UNIQUE_KEY (
     unique_key  product_code
   ),
+  cron   '@weekly',
   grain       (product_id),
   description 'Référentiel produits Silver. Dédupliqué sur product_code, normalisé depuis products_raw (multi-sources : food, beauty, petfood, other). Champs communs à plat, enrichi avec métriques de qualité et flags de complétude. Référence silver.brand via brand_id. Les catégories sont gérées via silver.product_category (N-N).'
 );

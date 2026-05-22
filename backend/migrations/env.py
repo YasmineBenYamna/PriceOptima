@@ -1,10 +1,15 @@
 from logging.config import fileConfig
+import sys
+import os
+
+# ← Ajoute le dossier /app au path pour que les imports fonctionnent
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
-from database import app_engine, Base
+from config.database import Base  # ← adapte selon ton vrai chemin
 import models
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

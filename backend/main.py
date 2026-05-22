@@ -6,7 +6,9 @@ from fastapi.exceptions import RequestValidationError
 from config.settings import APP_TITLE, APP_VERSION
 from config.dependencies import db_manager
 
-from api import auth, products, rules, strategies, pricing, jobs, superset
+from api import auth, products, rules, strategies, pricing, jobs, superset ,llm 
+import logging
+logging.basicConfig(level=logging.INFO)
 
 db_manager.create_tables()
 
@@ -28,6 +30,7 @@ app.include_router(strategies.router)
 app.include_router(pricing.router)
 app.include_router(jobs.router)
 app.include_router(superset.router)
+app.include_router(llm.router)
 
 @app.get("/")
 def root():

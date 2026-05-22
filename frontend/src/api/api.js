@@ -225,7 +225,7 @@ const mock = {
   'POST /pricing/calculate-batch': async (body) => { await delay(600); return { strategy_name: body.strategy_name, total_processed: (body.products || []).length, failed: 0, results: (body.products || []).map((p) => ({ product_id: p.id, final_price: +(p.price * 0.97).toFixed(2), contributions: [] })), errors: [] }; },
 
   // ── LLM ───────────────────────────────────────────────────────────────────
-  'POST /pricing/llm-suggestion': async (body) => {
+  'POST /pricing/suggest-strategy': async (body) => {
     await delay(800);
     return {
       recommended_strategy_name: 'COMPETITIVE',
@@ -399,7 +399,7 @@ export function deleteUserStrategy(id)               { return request('DELETE', 
 // ─── LLM Suggestion ──────────────────────────────────────────────────────────
 
 export function getLLMSuggestion(body) {
-  return request('POST', '/pricing/llm-suggestion', {
+  return request('POST', '/pricing/suggest-strategy', {
     category: body?.category || undefined,
     brand:    body?.brand    || undefined,
   });

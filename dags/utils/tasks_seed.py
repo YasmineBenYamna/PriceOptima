@@ -100,24 +100,16 @@ def _pg_attach_string() -> str:
         conn.close()
 
 def _open_duck() -> duckdb.DuckDBPyConnection:
-    """Crée et configure une connexion DuckDB in-memory avec l'extension PostgreSQL attachée.
-    Configure DuckDB avec 1 thread, 600 MB de mémoire limite, et un répertoire de spill
-    sur disque pour éviter les OOM. Installe et charge l'extension postgres puis attache
-    la base retail_pricing comme schéma 'pg'.
-
-    Returns:
-        duckdb.DuckDBPyConnection: Connexion DuckDB prête à l'emploi avec pg attaché.
-    """
     os.makedirs("/tmp/duckdb_spill", exist_ok=True)
     con = duckdb.connect(
         database=":memory:",
         config={
             "threads": 1,
-            "memory_limit": "600MB",
             "preserve_insertion_order": False,
-            "temp_directory": "/tmp/duckdb_spill",
         }
     )
+    con.execute("SET memory_limit='4GB'")
+    con.execute("SET temp_directory='/tmp/duckdb_spill'")
     con.execute("INSTALL postgres; LOAD postgres")
     con.execute(f"ATTACH '{_pg_attach_string()}' AS pg (TYPE POSTGRES)")
     return con
@@ -363,27 +355,11 @@ def build_extra_cols(source_cols: set[str]) -> list[str]:
 # INSERT — prices
 
 def _insert_prices(parquet_path: str, already_loaded: int) -> int:
-    """Insère les prix depuis un fichier Parquet dans prices_raw via DuckDB → PostgreSQL.
-
-    Skip si le nombre de lignes déjà chargées est égal au total du fichier.
-    Utilise un WHERE NOT EXISTS pour filtrer les doublons avant insertion,
-    évitant ainsi un ON CONFLICT coûteux.
-    Le schéma est inféré dans une connexion légère séparée avant d'ouvrir
-    la connexion pg attachée, pour éviter les conflits d'extension DuckDB.
-
-    Args:
-        parquet_path: Chemin absolu vers le fichier prices.parquet.
-        already_loaded: Nombre de lignes déjà présentes dans prices_raw.
-
-    Returns:
-        int: Nombre de nouvelles lignes insérées (0 si skip).
-    """
     total = pq.ParquetFile(parquet_path).metadata.num_rows
     if already_loaded >= total:
         logger.info("✅ prices_raw déjà complet → skip")
         return 0
 
-    # ── Inférence schéma dans connexion légère (sans pg attaché) ──
     con_light = duckdb.connect(":memory:")
     try:
         desc = con_light.execute(
@@ -395,24 +371,30 @@ def _insert_prices(parquet_path: str, already_loaded: int) -> int:
     source_cols = {r[0] for r in desc}
     exprs = [_prices_expr(c, source_cols) for c in PRICES_COLUMNS]
 
-    # ── Insertion via connexion pg attachée ────────────────────────
     con = _open_duck()
     try:
+        # ── Étape 1 ──
+        con.execute("""
+            CREATE TEMP TABLE existing_ids AS
+            SELECT id AS ex_id, updated AS ex_updated
+            FROM pg.public.prices_raw
+        """)
+
+        # ── Étape 2 ──
         con.execute(f"""
             INSERT INTO pg.public.prices_raw ({", ".join(PRICES_COLUMNS)})
             SELECT {", ".join(exprs)}
             FROM read_parquet('{parquet_path}') src
-            WHERE NOT EXISTS (
-                SELECT 1 FROM pg.public.prices_raw existing
-                WHERE existing.id      = TRY_CAST(src.id      AS BIGINT)
-                  AND existing.updated = TRY_CAST(src.updated AS TIMESTAMP)
-            )
+            LEFT JOIN existing_ids ex
+                ON ex.ex_id      = TRY_CAST(src.id      AS BIGINT)
+               AND ex.ex_updated = TRY_CAST(src.updated AS TIMESTAMP)
+            WHERE ex.ex_id IS NULL
         """)
         logger.info(f"✅ prices_raw : {total:,} lignes traitées")
         return total - already_loaded
     finally:
         con.close()
-
+        
 # INSERT — products parquet (fichier unique)
 
 def _insert_products_parquet_file(part_path: str, source_url: str, data_source: str) -> int:
