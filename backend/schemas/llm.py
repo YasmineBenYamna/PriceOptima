@@ -18,12 +18,13 @@ class LLMSuggestRequest(BaseModel):
 
 
 class RuleInStrategy(BaseModel):
-    rule_id:     str
+    rule_id:     Optional[str] = None   # ← custom rules ont rule_id=None
     rule_name:   str
     coefficient: float
     params:      Dict[str, Any] = {}
     is_new:      bool = False
-
+    description: Optional[str] = None  # ← sinon Pydantic ignore le champ
+    formula:     Optional[str] = None  # ← idem
 
 class LLMSuggestResponse(BaseModel):
     recommended_strategy_id:   str
@@ -34,3 +35,4 @@ class LLMSuggestResponse(BaseModel):
     reasoning:                 Dict[str, Any] = {}
     explanation:               str = ""
     context_used:              Dict[str, Any] = {}
+    adjusted_by_guard: bool = False

@@ -20,6 +20,7 @@ class DatabaseManager:
             f"postgresql://{s.db_user}:{s.db_password}@{s.db_host}:{s.db_port}/data_pricer",
             pool_size=3, max_overflow=2, pool_pre_ping=True,
             pool_recycle=300, pool_timeout=30,
+            connect_args={"connect_timeout": 5}, 
         )
         self._AppSession = sessionmaker(
             autocommit=False, autoflush=False, bind=self._app_engine
@@ -28,14 +29,19 @@ class DatabaseManager:
             f"postgresql://{s.db_user}:{s.db_password}@{s.db_host}:{s.db_port}/retail_pricing",
             pool_size=3, max_overflow=2, pool_pre_ping=True,
             pool_recycle=300, pool_timeout=30,
+            connect_args={"connect_timeout": 5},
         )
 
     def create_tables(self):
         import models  # noqa: F401
         Base.metadata.create_all(bind=self._app_engine)
 
-    def get_session(self) -> Session:
-        return self._AppSession()
+    def get_session(self):
+        session = self._AppSession()
+        try:
+            yield session
+        finally:
+            session.close()
 
     @contextmanager
     def session_scope(self):

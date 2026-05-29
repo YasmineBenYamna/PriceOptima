@@ -13,6 +13,7 @@ import {
   getBrands,
   getProductsByCategory,
   getProductsByBrand,
+  importCsv,
 } from '../api/api.js';
 
 const IconUpload = (
@@ -71,6 +72,7 @@ export default function ProductScopePage() {
       setCategoryProducts([]);
       return;
     }
+
     setOpenedCategory(catName);
     setLoadingCatProds(true);
     try {
@@ -103,6 +105,32 @@ export default function ProductScopePage() {
       next.has(value) ? next.delete(value) : next.add(value);
       return next;
     });
+  };
+
+  
+  const handleCsvUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const text = await file.text();
+    const lines = text.replace(/^\uFEFF/, '').split('\n'); // strip BOM
+    const header = lines[0].toLowerCase().trim();
+    
+    // Détecter la colonne EAN
+    const sep = header.includes(';') ? ';' : ',';
+    const cols = header.split(sep);
+    const eanIdx = cols.findIndex(c => ['ean','code','barcode'].includes(c.trim()));
+    
+    const eans = lines.slice(1)
+      .map(line => {
+        const val = eanIdx >= 0 ? line.split(sep)[eanIdx] : line;
+        return val?.trim().replace(/"/g, '') || '';
+      })
+      .filter(v => v.length >= 8);
+
+    setTab('Product');
+    setEanText(eans.join('\n'));
+    e.target.value = '';
   };
 
   const canNext =
@@ -186,7 +214,7 @@ export default function ProductScopePage() {
               >
                 Import CSV
               </Button>
-              <input id="csv-upload" type="file" accept=".csv" style={{ display: 'none' }} />
+              <input id="csv-upload" type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCsvUpload} />
             </div>
 
             <textarea

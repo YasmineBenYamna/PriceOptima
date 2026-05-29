@@ -1,4 +1,5 @@
 from models.job import Job
+from models.price_result import PriceResult
 from typing import Optional
 from datetime import datetime
 
@@ -37,10 +38,19 @@ class JobRepository:
             session.expunge(job)
             return job
 
-    def delete(self, job: Job):
-        """Supprime un job de la base de données."""
+    def delete(self, job_id: str) -> bool:
+        """Supprime un job et ses price_results associés."""
         with self._db.session_scope() as session:
-            session.delete(session.merge(job))
+            job = session.query(Job).filter(Job.id == job_id).first()
+            if not job:
+                return False
+
+            session.query(PriceResult).filter(
+                PriceResult.job_id == job_id
+            ).delete(synchronize_session=False)
+
+            session.delete(job)
+            return True
 
     def update_status(self, job_id: str, status: str):
         """Met à jour uniquement le statut d'un job (pending → running → completed/failed)."""

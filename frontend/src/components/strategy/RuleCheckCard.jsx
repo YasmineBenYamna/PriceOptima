@@ -22,19 +22,21 @@ export default function RuleCheckCard({ rule, badge, selected, onToggle, isUserR
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{rule.name}</span>
 
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                padding: '2px 6px',
-                borderRadius: 20,
-                background: badge.bg,
-                color: badge.color,
-                letterSpacing: '0.04em',
-              }}
-            >
-              {badge.label}
-            </span>
+            {badge && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: '2px 6px',
+                  borderRadius: 20,
+                  background: badge.bg,
+                  color: badge.color,
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {badge.label}
+              </span>
+            )}
 
             {isUserRule && (
               <span

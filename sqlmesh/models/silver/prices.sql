@@ -1,5 +1,6 @@
 MODEL (
   name        silver.prices,
+  stamp       'v2',
   kind        INCREMENTAL_BY_TIME_RANGE (
     time_column date,
     batch_size  30

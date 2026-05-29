@@ -1,6 +1,7 @@
 import os
 import psycopg2
 from datetime import datetime, timezone
+import json
 
 def _require_env(key: str) -> str:
     value = os.environ.get(key)
@@ -16,12 +17,9 @@ DB_CONFIG = {
     "password": _require_env("POSTGRES_PASSWORD"),
 }
 
-# common.py — ajouter après DB_CONFIG
-import json
-
 SCHEMA_CONFIG_PATH = os.environ.get(
     "SCHEMA_CONFIG_PATH", 
-    "/opt/airflow/dags/config/schema_config.json"
+    "/opt/airflow/dags/config/schema_config.json" #fallback si absence de la var env
 )
 
 with open(SCHEMA_CONFIG_PATH) as f:
@@ -44,31 +42,3 @@ PRODUCTS_INSERT_COLS = _SCHEMA["products_raw"]["insert_columns"]
 def get_db_connection() -> psycopg2.extensions.connection:
     return psycopg2.connect(**DB_CONFIG)
 
-def unix_to_datetime(ts: int | float | None) -> datetime | None:
-    """Convertit un timestamp Unix en objet datetime UTC.
-
-    dans notre datasets, certains champs sont en secondes
-    , d'autres peuvent être en millisecondes.
-    La heuristique `> 10_000_000_000` détecte les millisecondes — toute valeur
-    supérieure correspond à une date après l'année 2286 en secondes, ce qui est
-    impossible pour des données produits — et divise par 1000 pour normaliser.
-
-    Parameters
-    ----------
-    ts : int | float | None
-        Timestamp Unix en secondes ou millisecondes.
-
-    Returns
-    -------
-    datetime | None
-        Datetime UTC correspondant, ou None si ts est None ou invalide.
-    """
-    if ts is None:
-        return None
-    try:
-        ts = int(ts)
-        if ts > 10_000_000_000:
-            ts = ts / 1000
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
-    except Exception:
-        return None

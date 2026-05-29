@@ -114,7 +114,7 @@ with DAG(
         task_id="initialize_schema",
         postgres_conn_id="postgres_retail",
         sql=build_create_tables_sql(SCHEMA_CONFIG_PATH),
-        autocommit=True,
+        autocommit=True, # validé sans attendre COMMIT
     )
 
     t_seed_prices = PythonOperator(
@@ -126,7 +126,7 @@ with DAG(
     t_seed_food = PythonOperator(
         task_id="seed_food",
         python_callable=_seed_food,
-        execution_timeout=timedelta(hours=6),
+        execution_timeout=timedelta(hours=11),
     )
 
     t_seed_beauty = PythonOperator(
@@ -195,6 +195,9 @@ with DAG(
         -- Jointure categories_tags → silver.category
         CREATE INDEX IF NOT EXISTS idx_prr_categories_tags
             ON public.products_raw (categories_tags);
+            
+        CREATE INDEX IF NOT EXISTS idx_prr_updated_at
+            ON public.products_raw (updated_at);
 
         -- ================================================================
         -- EXCHANGE_RATES_RAW — petite table mais jointure fréquente
@@ -204,7 +207,21 @@ with DAG(
         """,
         database='retail_pricing',
     )
-    
+    t_sqlmesh = BashOperator(
+        task_id="run_sqlmesh_transformation",
+        bash_command="""
+            cd /opt/airflow/sqlmesh &&
+            mkdir -p logs &&
+            sqlmesh plan prod --no-prompts --auto-apply --restate-model '*' &&
+            sqlmesh run prod --skip-janitor
+        """,
+        execution_timeout=timedelta(hours=30),
+    )
+    t_trigger = TriggerDagRunOperator(
+        task_id="trigger_daily",
+        trigger_dag_id="dag_data_enrichment",
+        wait_for_completion=False,
+    )
 
 
 (
@@ -216,4 +233,6 @@ with DAG(
     >> t_seed_other
     >> t_seed_currency
     >> create_source_indexes
+    >> t_sqlmesh
+    >> t_trigger
 )

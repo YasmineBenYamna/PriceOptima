@@ -64,11 +64,12 @@ class RuleService:
         return {"rules": result, "total": len(result)}
 
     def get_rule(self, rule_id: str) -> dict:
-        """Retourne une règle système par son identifiant."""
         rule = self._rule_repo.find_by_id(rule_id)
         if not rule:
             raise HTTPException(status_code=404, detail="Rule introuvable")
-        return self._serialize_system(rule)
+        if getattr(rule, 'is_system', True):
+            return self._serialize_system(rule)
+        return self._serialize_custom(rule)
 
     def update_rule(self, rule_id: str, body) -> dict:
         """Met à jour les paramètres ou le statut d'une règle système."""

@@ -88,7 +88,8 @@ def init_superset():
         "--email",     ADMIN_EMAIL,
         "--password",  ADMIN_PASSWORD,
     ], check=False)  # check=False car erreur si admin existe déjà
-    print("✅ Admin prêt")
+    print("✅ Admin prêt")  
+    
 
 # ─── Créer connexion DB + datasets via SQLAlchemy/Superset Python API ─────────
 def create_datasets():
@@ -289,4 +290,5 @@ if __name__ == "__main__":
     wait_for_postgres()
     create_superset_db()
     init_superset()
+    create_embedded_viewer_role() 
     create_datasets()

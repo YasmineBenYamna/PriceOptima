@@ -87,7 +87,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 60s
+      start_period: 90s
     deploy:
       resources:
         limits:
@@ -307,6 +307,7 @@ services:
       DATABASE_USER: ${POSTGRES_USER}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
       DATABASE_DB: ${SUPERSET_DB}
+      MARKET_DB_NAME: ${MARKET_DB_NAME} 
       SUPERSET_WEBSERVER_TIMEOUT: "120"
       TALISMAN_ENABLED: "False"
       WTF_CSRF_ENABLED: "False"

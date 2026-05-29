@@ -1,5 +1,6 @@
 MODEL (
   name        silver.prices_errors,
+  stamp       'v2',
   -- FIX : était INCREMENTAL_BY_UNIQUE_KEY → @start_ds/@end_ds non injectés par SQLMesh,
   --       table restait vide. Aligné sur INCREMENTAL_BY_TIME_RANGE comme silver.prices
   --       pour que SQLMesh injecte correctement la fenêtre temporelle du batch.

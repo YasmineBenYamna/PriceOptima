@@ -20,6 +20,17 @@ class PricingService:
         with self._db.market_conn() as conn:
             result = conn.execute(text(sql), params)
             return [dict(row._mapping) for row in result]
+    
+    def _get_param(self, params: dict, key: str, default):
+        """
+        Extrait la valeur d'un param qui peut être :
+        - une valeur directe : {"aggregation_function": "median"}
+        - une métadonnée catalogue : {"aggregation_function": {"default": "median", ...}}
+        """
+        val = params.get(key, default)
+        if isinstance(val, dict):
+            return val.get("default", default)
+        return val
 
     def _resolve_base_price(self, product_code: str, company_name: Optional[str]) -> float:
         """
@@ -35,9 +46,9 @@ class PricingService:
                 FROM silver.prices p
                 JOIN silver.magasin m ON m.magasin_id = p.magasin_id
                 WHERE p.product_code = :c
-                  AND m.nom_enseigne ILIKE :n
-                  AND p.price_eur IS NOT NULL AND p.price_eur > 0
-                ORDER BY p.price_eur ASC
+                AND m.nom_enseigne ILIKE :n
+                AND p.price_eur IS NOT NULL AND p.price_eur > 0
+                ORDER BY p.date DESC   -- ← dernière observation
                 LIMIT 1
             """, {"c": product_code, "n": f"%{company_name}%"})
             if own_rows:
@@ -47,7 +58,9 @@ class PricingService:
             SELECT AVG(price_eur) AS avg_price
             FROM silver.prices
             WHERE product_code = :c
-              AND price_eur IS NOT NULL AND price_eur > 0
+            AND price_eur IS NOT NULL
+            AND price_eur > 0
+            AND price_eur < 1000
         """, {"c": product_code})
         if market_rows and market_rows[0]["avg_price"]:
             return round(float(market_rows[0]["avg_price"]), 4)
@@ -71,7 +84,19 @@ class PricingService:
                     SELECT price_eur
                     FROM silver.prices
                     WHERE product_code = :c
-                      AND price_eur IS NOT NULL AND price_eur > 0
+                    AND price_eur IS NOT NULL
+                    AND price_eur > 0
+                    AND price_eur < 1000
+                    AND price_eur < COALESCE(
+                        (
+                            SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY price_eur)
+                            FROM silver.prices
+                            WHERE product_code = :c
+                                AND price_eur > 0
+                                AND price_eur < 1000
+                        ),
+                        1000
+                    )
                 """, {"c": product_code})
             ]
             own, comps = [], list(market)
@@ -82,10 +107,22 @@ class PricingService:
                         FROM silver.prices p
                         JOIN silver.magasin m ON m.magasin_id = p.magasin_id
                         WHERE p.product_code = :c
-                          AND m.nom_enseigne ILIKE :n
-                          AND p.price_eur IS NOT NULL AND p.price_eur > 0
+                        AND m.nom_enseigne ILIKE :n
+                        AND p.price_eur IS NOT NULL
+                        AND p.price_eur > 0
+                        AND p.price_eur < 1000
+                        ORDER BY p.date DESC
+                        LIMIT 10
                     """, {"c": product_code, "n": f"%{company_name}%"})
                 ]
+                logger.info(
+                    "EAN=%s company_name=%r pattern=%r own=%d market=%d",
+                    product_code,
+                    company_name,
+                    f"%{company_name}%",
+                    len(own),
+                    len(market)
+                )
                 comps = [
                     float(r["price_eur"]) for r in self._query("""
                         SELECT p.price_eur
@@ -114,32 +151,44 @@ class PricingService:
         own    = market_data["own_prices"]
 
         if name == "aggregation_rule":
-            if not market:
-                return base_price, "Aucun prix marché — fallback"
-            agg = params.get("aggregation_function", "median")
-            if agg == "lowest":
-                suggested = min(market)
-            elif agg == "average":
-                suggested = sum(market) / len(market)
-            else:
-                suggested = statistics.median(market)
-            return round(suggested, 4), f"agg={agg}, n={len(market)}"
-
-        elif name == "floor_price_rule":
-            source = own if own else market
+            # Utiliser les prix concurrents si disponibles, sinon marché complet
+            source = comps if comps else market
             if not source:
-                return base_price, "Aucun prix disponible — fallback"
-            floor = min(source)
-            label = "own" if own else "market"
-            return round(max(base_price, floor), 4), f"floor=MIN({label})={round(floor,4)}€"
+                return base_price, "Aucun prix marché — fallback"
+            agg = self._get_param(params, "aggregation_function", "median")
+            if agg == "lowest":
+                suggested = min(source)
+            elif agg == "average":
+                suggested = sum(source) / len(source)
+            else:
+                suggested = statistics.median(source)
+            label = "comps" if comps else "market"
+            return round(suggested, 4), f"agg={agg}, n={len(source)}, source={label}"
+        elif name == "floor_price_rule":
+            # floor_value : seuil absolu configuré dans les params de la règle
+            # floor_pct   : seuil relatif (% du prix de base), optionnel
+            floor_value = float(self._get_param(params, "floor_value", 0.0))
+            floor_pct   = float(self._get_param(params, "floor_pct",   0.0))
+
+            floor_from_pct = round(base_price * (1.0 - floor_pct / 100.0), 4) if floor_pct > 0 else 0.0
+            floor = max(floor_value, floor_from_pct)
+
+            if floor <= 0:
+                return base_price, "Aucun floor configuré — fallback"
+
+            final = round(max(base_price, floor), 4)
+            return final, f"floor={round(floor,4)}€ (value={floor_value}, pct={floor_pct}%)"
 
         elif name == "competitor_beat_rule":
-            if not comps:
+            source = comps if comps else market
+            if not source:
                 return base_price, "Aucun prix concurrent — fallback"
-            pct      = float(params.get("discount_pct", 3.0))
-            avg_comp = sum(comps) / len(comps)
-            suggested = round(avg_comp * max(0.0, 1.0 - pct / 100.0), 4)
-            return suggested, f"comp_avg={round(avg_comp,4)} × (1−{pct}%)"
+            pct = float(self._get_param(params, "discount_pct", 3.0))
+            avg_source = sum(source) / len(source)
+            suggested = round(avg_source * (1.0 - pct / 100.0), 4)
+            suggested = min(suggested, base_price)
+            label = "comps" if comps else "market"
+            return suggested, f"{label}_avg={round(avg_source,4)} × (1−{pct}%)"
 
         elif name == "market_average_rule":
             if not market:
@@ -154,22 +203,43 @@ class PricingService:
             return round(max(base_price, min_store), 4), f"MIN(store)={round(min_store,4)}€"
 
         elif name == "stability_rule":
-            if len(own) < 2:
-                return base_price, "Historique magasin insuffisant — fallback"
-            price_t  = own[0]
-            price_t1 = own[1]
-            if price_t1 <= 0:
-                return base_price, "Prix précédent invalide — fallback"
-            high = float(params.get("high_threshold_pct", 15.0))
-            low  = float(params.get("low_threshold_pct",  1.0))
+            source = own if len(own) >= 2 else market
+            if len(source) < 2:
+                return base_price, "Historique insuffisant — fallback"
+            price_t  = source[0]
+            price_t1 = source[1]
+            if price_t1 <= 0 or price_t == price_t1:
+                return base_price, "Prix identiques — stable"
+            high = float(self._get_param(params, "high_threshold_pct", 15.0))
+            low  = float(self._get_param(params, "low_threshold_pct", 1.0))
             var  = abs(price_t - price_t1) / price_t1 * 100
-            if var > high or var < low:
-                lissage = round((price_t + price_t1) / 2.0, 4)
-                return lissage, f"variation={round(var,1)}% → lissage activé"
+            if var > high:
+                capped = round(price_t1 * (1 + high / 100), 4)
+                return capped, f"variation={round(var,1)}% > {high}% → capé"
+            if var < low:
+                return base_price, f"variation={round(var,1)}% < {low}% → stable"
             return base_price, f"variation={round(var,1)}% → stable"
+                
+        formula = getattr(rule, 'formula', None)
+        if formula:
+            context = {
+                'price':            base_price,
+                'market_average':   round(sum(market) / len(market), 4) if market else base_price,
+                'competitor_price': round(sum(comps)  / len(comps),  4) if comps  else base_price,
+                'own_price':        round(sum(own)     / len(own),    4) if own    else base_price,
+                'min_market':       min(market) if market else base_price,
+                'max_market':       max(market) if market else base_price,
+            }
+            try:
+                result = eval(formula, {"__builtins__": {}}, context)
+                return round(float(result), 4), f"custom formula: {formula}"
+            except Exception as e:
+                logger.warning("Custom rule formula eval error: %s", str(e))
+                return base_price, "Formule invalide — fallback"
 
-        return base_price, f"Rule '{name}' inconnue — fallback"
+        return base_price, "Rule inconnue fallback"
 
+    
     def compute_price(self, ean: str, strategy, company_name: str = None) -> dict:
         """
         Calcule le prix optimal pour un EAN selon une stratégie.
@@ -179,7 +249,7 @@ class PricingService:
         3. Applique chaque règle active avec son coefficient
         4. Retourne le prix final = somme des (prix_suggéré × coefficient)
         """
-        rules = [(sr.rule, sr.coefficient) for sr in strategy.rules if sr.rule.active]
+        rules = [(sr.rule, sr.coefficient) for sr in strategy.rules if sr.rule is not None and sr.rule.active]
         if not rules:
             raise HTTPException(status_code=400, detail={"error": "EMPTY_STRATEGY", "message": "Aucune règle active dans la stratégie"})
 
@@ -203,20 +273,41 @@ class PricingService:
                 "detail":      detail
             })
 
-        final_price  = round(sum(c["weighted"] for c in contributions), 2)
+        valid = [c for c in contributions if "fallback" not in c["detail"]]
+
+        if valid:
+            total_valid_coeff = sum(c["coefficient"] for c in valid)
+            final_price = round(
+                sum(c["suggested"] * (c["coefficient"] / total_valid_coeff)
+                    for c in valid),
+                2
+            )
+        else:
+            # Toutes les règles en fallback → prix inchangé
+            final_price = round(base_price, 2)
+
         price_change = round(final_price - base_price, 2)
         change_pct   = round((price_change / base_price) * 100, 1) if base_price > 0 else 0.0
-
+        logger.info(
+            "EAN=%s base=%.4f market=%d own=%d comps=%d contributions=%s",
+            ean,
+            base_price,
+            len(market_data["market_prices"]),
+            len(market_data["own_prices"]),
+            len(market_data["competitor_prices"]),
+            [(c["rule"], c["suggested"], c["detail"]) for c in contributions]
+        )
         return {
-            "product_id":     ean,
-            "original_price": round(base_price, 2),
-            "final_price":    final_price,
-            "price_change":   price_change,
-            "change_pct":     change_pct,
-            "currency":       "EUR",
-            "strategy_name":  strategy.name,
-            "is_custom":      strategy.is_custom,
-            "contributions":  contributions,
+            "product_id":        ean,
+            "original_price":    round(base_price, 2),
+            "final_price":       final_price,
+            "price_change":      price_change,
+            "change_pct":        change_pct,
+            "currency":          "EUR",
+            "strategy_name":     strategy.name,
+            "is_custom":         strategy.is_custom,
+            "contributions":     contributions,
+            "fallback_count":    len(contributions) - len(valid),  # ← info utile pour debug
             "market_data": {
                 "market_prices_count":     len(market_data["market_prices"]),
                 "competitor_prices_count": len(market_data["competitor_prices"]),

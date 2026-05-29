@@ -2,7 +2,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logout } from '../../api/api.js';
-import { C, F, R, Logo } from '../ui/index.js';
+import { C, F, R } from '../ui/index.js';
 
 const NAV_ITEMS = [
   {
@@ -130,12 +130,31 @@ export default function Sidebar() {
       height:         '100vh',
       flexShrink:     0,
     }}>
-      {/* Logo */}
+      {/* Brand — dans Sidebar.jsx */}
       <div style={{
         padding:      '20px 18px 18px',
         borderBottom: `1px solid ${C.border}`,
       }}>
-        <Logo size="sm" />
+        <div style={{
+          fontFamily: "'DM Serif Display', Georgia, serif",  // ← était F.head
+          fontSize:   14,
+          color:      C.text,
+          lineHeight: 1.2,
+          letterSpacing: '-0.02em',
+        }}>
+          PriceOptima
+        </div>
+        <div style={{
+          fontFamily:    "'DM Sans', system-ui, sans-serif",  // ← était F.body
+          fontSize:      9,
+          fontWeight:    600,
+          color:         C.textFaint,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          marginTop:     2,
+        }}>
+          Pricing Intelligence
+        </div>
       </div>
 
       {/* Nav */}

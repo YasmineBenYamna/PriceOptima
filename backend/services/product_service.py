@@ -108,6 +108,7 @@ class ProductService:
         return {"products": [self._serialize(r) for r in rows], "total": len(rows)}
 
     def get_by_eans(self, eans: list) -> dict:
+        logger.info(f"get_by_eans appelé avec: {eans}")
         rows = self._query("""
             SELECT DISTINCT ON (p.product_code)
                    p.product_code, p.product_name, p.brand_primary, p.images_raw
@@ -118,6 +119,7 @@ class ProductService:
             WHERE p.product_code = ANY(:eans)
               AND p.product_name IS NOT NULL
         """, {"eans": eans})
+        logger.info(f"Rows trouvées: {len(rows)}")
         products    = []
         found_codes = set()
         for r in rows:
@@ -130,62 +132,71 @@ class ProductService:
         }
 
     def import_csv(self, content: str) -> dict:
+        content = content.lstrip('\ufeff')  # strip BOM Excel
         reader = csv.DictReader(io.StringIO(content))
-        eans   = []
+        eans = []
         for row in reader:
-            ean = row.get("ean") or row.get("EAN") or row.get("code")
+            ean = row.get("ean") or row.get("EAN") or row.get("code") or row.get("barcode")
             if ean and ean.strip():
-                eans.append(ean.strip())
+                ean_clean = ean.strip()
+                # Convertir uniquement la notation scientifique Excel (ex: 8.90408E+12)
+                if 'E' in ean_clean.upper() and '.' in ean_clean:
+                    try:
+                        ean_clean = str(int(float(ean_clean)))
+                    except ValueError:
+                        pass
+                if ean_clean:
+                    eans.append(ean_clean)
+        logger.info(f"=== CSV DEBUG ===")
+        logger.info(f"Content repr: {repr(content[:300])}")
+        logger.info(f"EANs extraits: {eans}")
         if not eans:
             raise HTTPException(status_code=400, detail="Aucun EAN trouvé dans le fichier")
         return self.get_by_eans(eans)
-
     # ------------------------------------------------------------------
     # Catégories
     # ------------------------------------------------------------------
 
-    def get_categories(self, magasin_id: str | None = None) -> dict:
-        logger.info(f">>> get_categories appelé avec magasin_id={magasin_id}")
-        if magasin_id:
+    def get_categories(self, magasin_id: str | None = None, gold_only: bool = False) -> dict:
+        logger.info(f">>> get_categories appelé avec magasin_id={magasin_id} gold_only={gold_only}")
+        if magasin_id and gold_only:
             rows = self._query("""
-                WITH viable_products AS (
-                    -- D'abord filtrer les produits du magasin (réduit le dataset)
-                    SELECT DISTINCT pr.product_code
-                    FROM silver.prices pr
-                    WHERE pr.magasin_id = :magasin_id
-                    AND pr.price_eur IS NOT NULL
-                    AND pr.price_eur > 0
-                )
-                SELECT c.category_name,
-                    COUNT(DISTINCT pc.product_code) AS product_count
-                FROM viable_products vp
-                INNER JOIN sqlmesh__silver.silver__product_category__2009605456 pc
-                        ON pc.product_code = vp.product_code
-                INNER JOIN silver.category c
-                        ON c.category_id = pc.category_id
-                INNER JOIN silver.products p
-                        ON p.product_code = vp.product_code
-                    AND p.is_viable = TRUE
+                SELECT DISTINCT c.category_name,
+                    COUNT(DISTINCT dp.brand_id) AS product_count
+                FROM gold.dm_pricing_performance dp
+                LEFT JOIN silver.category c ON c.category_id = dp.category_id
+                WHERE dp.magasin_id = :magasin_id
+                AND c.category_name IS NOT NULL
+                GROUP BY c.category_name
+                ORDER BY product_count DESC
+                LIMIT 200
+            """, {"magasin_id": magasin_id})
+        elif magasin_id:
+            rows = self._query("""
+                SELECT c.category_name, COUNT(DISTINCT p.product_code) AS product_count
+                FROM silver.category c
+                INNER JOIN silver.product_category pc ON pc.category_id = c.category_id
+                INNER JOIN silver.products prod ON prod.product_code = pc.product_code AND prod.is_viable = TRUE
+                INNER JOIN silver.prices p ON p.product_code = prod.product_code
+                                        AND p.price_eur IS NOT NULL AND p.price_eur > 0
+                                        AND p.magasin_id = :magasin_id
                 WHERE c.category_name IS NOT NULL
                 GROUP BY c.category_name
-                HAVING COUNT(DISTINCT pc.product_code) > 0
+                HAVING COUNT(DISTINCT p.product_code) > 0
                 ORDER BY product_count DESC
-                LIMIT 50
+                LIMIT 200
             """, {"magasin_id": magasin_id})
         else:
             rows = self._query("""
                 SELECT category_name, product_count
                 FROM silver.category
-                WHERE category_name IS NOT NULL
-                AND product_count > 10
+                WHERE category_name IS NOT NULL AND product_count > 10
                 ORDER BY product_count DESC
-                LIMIT 50
+                LIMIT 200
             """, {})
         return {
-            "categories": [
-                {"name": r["category_name"], "product_count": r["product_count"]}
-                for r in rows if r.get("category_name")
-            ],
+            "categories": [{"name": r["category_name"], "product_count": r["product_count"]}
+                        for r in rows if r.get("category_name")],
             "total": len(rows)
         }
 
@@ -200,7 +211,7 @@ class ProductService:
                                           AND p.price_eur IS NOT NULL
                                           AND p.price_eur > 0
                                           AND p.magasin_id = :magasin_id
-                INNER JOIN sqlmesh__silver.silver__product_category__2009605456 pc
+                INNER JOIN silver.product_category pc
                         ON pc.product_code = pr.product_code
                 INNER JOIN silver.category c
                         ON c.category_id = pc.category_id
@@ -219,7 +230,7 @@ class ProductService:
                 INNER JOIN silver.prices p ON p.product_code = pr.product_code
                                           AND p.price_eur IS NOT NULL
                                           AND p.price_eur > 0
-                INNER JOIN sqlmesh__silver.silver__product_category__2009605456 pc
+                INNER JOIN silver.product_category pc
                         ON pc.product_code = pr.product_code
                 INNER JOIN silver.category c
                         ON c.category_id = pc.category_id
@@ -239,47 +250,44 @@ class ProductService:
     # Marques
     # ------------------------------------------------------------------
 
-    def get_brands(self, limit: int, magasin_id: str | None = None) -> dict:
-        logger.info(f">>> get_brands appelé avec magasin_id={magasin_id}")
-        if magasin_id:
+    def get_brands(self, limit: int, magasin_id: str | None = None, gold_only: bool = False) -> dict:
+        if magasin_id and gold_only:
             rows = self._query("""
-                WITH viable_products AS (
-                    -- Filtrer par magasin en premier (dataset réduit)
-                    SELECT DISTINCT pr.product_code
-                    FROM silver.prices pr
-                    WHERE pr.magasin_id = :magasin_id
-                    AND pr.price_eur IS NOT NULL
-                    AND pr.price_eur > 0
-                )
-                SELECT p.brand_primary AS brand_name,
-                    COUNT(DISTINCT vp.product_code) AS product_count
-                FROM viable_products vp
-                INNER JOIN silver.products p
-                        ON p.product_code = vp.product_code
-                    AND p.brand_primary IS NOT NULL
-                    AND p.is_viable = TRUE
+                SELECT DISTINCT b.brand_name,
+                    COUNT(DISTINCT dp.category_id) AS product_count
+                FROM gold.dm_pricing_performance dp
+                LEFT JOIN silver.brand b ON b.brand_id = dp.brand_id
+                WHERE dp.magasin_id = :magasin_id
+                AND b.brand_name IS NOT NULL
+                GROUP BY b.brand_name
+                ORDER BY product_count DESC
+                LIMIT :limit
+            """, {"magasin_id": magasin_id, "limit": limit})
+        elif magasin_id:
+            rows = self._query("""
+                SELECT p.brand_primary AS brand_name, COUNT(DISTINCT p.product_code) AS product_count
+                FROM silver.products p
+                INNER JOIN silver.prices pr ON pr.product_code = p.product_code
+                                        AND pr.price_eur IS NOT NULL AND pr.price_eur > 0
+                                        AND pr.magasin_id = :magasin_id
+                WHERE p.brand_primary IS NOT NULL AND p.is_viable = TRUE
                 GROUP BY p.brand_primary
+                HAVING COUNT(DISTINCT p.product_code) > 0
                 ORDER BY product_count DESC
                 LIMIT :limit
             """, {"magasin_id": magasin_id, "limit": limit})
         else:
-            # fallback inchangé...
             rows = self._query("""
-                SELECT brand_name, product_count
-                FROM silver.brand
-                WHERE brand_name IS NOT NULL
-                AND product_count > 5
-                ORDER BY product_count DESC
-                LIMIT :limit
+                SELECT brand_name, product_count FROM silver.brand
+                WHERE brand_name IS NOT NULL AND product_count > 5
+                ORDER BY product_count DESC LIMIT :limit
             """, {"limit": limit})
         return {
-            "brands": [
-                {"name": r["brand_name"], "product_count": r["product_count"]}
-                for r in rows if r.get("brand_name")
-            ],
+            "brands": [{"name": r["brand_name"], "product_count": r["product_count"]}
+                    for r in rows if r.get("brand_name")],
             "total": len(rows)
         }
-
+        
     def get_by_brand(self, brand: str, magasin_id: str | None, limit: int) -> dict:
         if magasin_id:
             rows = self._query("""

@@ -4,28 +4,50 @@ import { getGuestToken } from "../api/api.js";
 const SUPERSET_URL = import.meta.env.VITE_SUPERSET_URL || "http://localhost:8088";
 
 const DASHBOARDS = [
-  { id: "1", label: "Market Overview",   description: "Pricing trends and market positioning" },
-  { id: "2", label: "Store Performance", description: "Store-level pricing and sales metrics" },
+  {
+    id: "2",
+    uuid: "58ace35d-d89a-49ca-b2a0-3e3606b956ed",
+    label: "Market Overview",
+    description: "Pricing trends and market positioning",
+  },
+  {
+    id: "1",
+    uuid: "c8b7b496-0b25-4e3a-b51a-91adcfde7f86",
+    label: "Category & brand analysis",
+    description: "Category & brand analysis",
+  },
 ];
 
 export default function DashboardPage() {
-  const iframeRef                 = useRef(null);
-  const [activeDashboard, setActiveDashboard] = useState("1");
+  const iframeRef = useRef(null);
+  const [activeDashboard, setActiveDashboard] = useState("2");
   const [iframeSrc, setIframeSrc] = useState(null);
-  const [error,   setError]       = useState(null);
-  const [loading, setLoading]     = useState(true);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const loadDashboard = useCallback(async (dashboardId) => {
     setLoading(true);
     setError(null);
     setIframeSrc(null);
 
-    try {
-      const data        = await getGuestToken(dashboardId);
-      const guestToken  = data.guest_token;
+    const dashboard = DASHBOARDS.find((d) => d.id === dashboardId);
 
-      // Build the Superset standalone URL with the guest token
-      const url = `${SUPERSET_URL}/superset/dashboard/${dashboardId}/?standalone=3&guest_token=${encodeURIComponent(guestToken)}`;
+    try {
+      const data = await getGuestToken(dashboard.uuid);
+      const guestToken = data.guest_token;
+
+      // Décode le JWT pour récupérer l'enseigne
+      const payload = JSON.parse(atob(guestToken.split(".")[1]));
+      const enseigne = payload.user?.username || "";
+
+      // Passe enseigne EN PREMIER dans les query params, avant guest_token
+      const url =
+        `${SUPERSET_URL}/superset/dashboard/${dashboard.id}/` +
+        `?standalone=2` +
+        `&show_filters=1` +
+        `&enseigne=${encodeURIComponent(enseigne)}` +
+        `&guest_token=${encodeURIComponent(guestToken)}`;
+
       setIframeSrc(url);
     } catch (err) {
       setError(err.message || "Failed to load dashboard.");
@@ -39,8 +61,6 @@ export default function DashboardPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 64px)", background: "#f5f7fb" }}>
-
-      {/* ── Tab bar ── */}
       <div style={{
         display: "flex", alignItems: "center", gap: 4,
         padding: "10px 24px 0", background: "#ffffff",
@@ -68,7 +88,6 @@ export default function DashboardPage() {
 
         <button
           onClick={() => loadDashboard(activeDashboard)}
-          title="Refresh"
           style={{
             marginLeft: "auto", padding: "6px 14px", fontSize: 12,
             fontWeight: 600, color: "#1E3A5F", background: "#F4F7FF",
@@ -87,7 +106,6 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {/* ── Description ── */}
       {!loading && !error && (
         <div style={{
           padding: "8px 24px", fontSize: 12, color: "#6B7280",
@@ -97,10 +115,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Content ── */}
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-
-        {/* Iframe — shown once src is set */}
         {iframeSrc && (
           <iframe
             ref={iframeRef}
@@ -115,7 +130,6 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* Spinner */}
         {loading && !error && (
           <div style={{
             position: "absolute", inset: 0,
@@ -134,7 +148,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div style={{
             position: "absolute", inset: 0,

@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+
+
 /* ─── Design tokens synchronisés avec le nouveau global.css ─── */
 const T = {
   bg:          "#F7F5F0",
@@ -12,14 +14,16 @@ const T = {
   text:        "#1C1A17",
   muted:       "#6B6560",
   faint:       "#A09890",
-  accent:      "#2C3E50",   // ardoise
+  accent:      "#2C3E50",
   accentHov:   "#3D5268",
-  sage:        "#4A5D52",   // mousse — succès / positif
-  warm:        "#7A5C3A",   // fauve — warning
+  sage:        "#4A5D52",
+  warm:        "#7A5C3A",
   fontHead:    "'DM Serif Display', Georgia, serif",
   fontBody:    "'DM Sans', system-ui, sans-serif",
   fontMono:    "'DM Mono', monospace",
 };
+
+
 
 /* ─── Utility : scroll reveal ─── */
 function useReveal() {
@@ -39,6 +43,8 @@ function useReveal() {
   }, []);
 }
 
+
+
 /* ─── Counter animation ─── */
 function animateCount(el, target, suffix = "") {
   let start = 0;
@@ -54,39 +60,26 @@ function animateCount(el, target, suffix = "") {
   requestAnimationFrame(step);
 }
 
-/* ─── Logo ─── */
-function Logo({ size = "sm" }) {
-  const lg = size === "lg";
+
+
+/* ─── Brand inline (remplace Logo) ─── */
+function Brand() {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: lg ? 12 : 9 }}>
+    <div style={{ display: "flex", flexDirection: "column" }}>
       <div style={{
-        width: lg ? 40 : 32, height: lg ? 40 : 32,
-        borderRadius: lg ? 10 : 8,
-        background: T.accent,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0,
-      }}>
-        <svg width={lg ? 18 : 15} height={lg ? 18 : 15} viewBox="0 0 24 24"
-          fill="none" stroke="#FDFCFA" strokeWidth="2.2"
-          strokeLinecap="round" strokeLinejoin="round">
-          <line x1="3" y1="20" x2="21" y2="20" />
-          <polyline points="3,16 7,11 11,13 16,6 21,8" />
-          <circle cx="16" cy="6" r="1.8" fill="#FDFCFA" stroke="none" />
-        </svg>
-      </div>
-      <div>
-        <div style={{
-          fontFamily: T.fontHead, fontSize: lg ? 17 : 14,
-          color: T.text, lineHeight: 1.2, letterSpacing: "-0.02em",
-        }}>PriceOptima</div>
-        <div style={{
-          fontFamily: T.fontBody, fontSize: 9, fontWeight: 600,
-          color: T.faint, letterSpacing: "0.1em", textTransform: "uppercase",
-        }}>Pricing Intelligence</div>
-      </div>
+        fontFamily: T.fontHead, fontSize: 14,
+        color: T.text, lineHeight: 1.2, letterSpacing: "-0.02em",
+      }}>PriceOptima</div>
+      <div style={{
+        fontFamily: T.fontBody, fontSize: 9, fontWeight: 600,
+        color: T.faint, letterSpacing: "0.1em", textTransform: "uppercase",
+        marginTop: 2,
+      }}>Pricing Intelligence</div>
     </div>
   );
 }
+
+
 
 /* ─── Navbar ─── */
 function Navbar({ onNavigate }) {
@@ -96,6 +89,8 @@ function Navbar({ onNavigate }) {
     window.addEventListener("scroll", fn);
     return () => window.removeEventListener("scroll", fn);
   }, []);
+
+
 
   return (
     <nav style={{
@@ -111,7 +106,8 @@ function Navbar({ onNavigate }) {
         display: "flex", alignItems: "center",
         justifyContent: "space-between", height: 64,
       }}>
-        <Logo />
+        <Brand />
+
 
         <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
           {[["#features", "Features"], ["#how", "How it works"]].map(([href, label]) => (
@@ -125,6 +121,7 @@ function Navbar({ onNavigate }) {
           ))}
         </div>
 
+
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <button onClick={onNavigate} style={{
             fontFamily: T.fontBody, fontSize: 13, fontWeight: 500,
@@ -135,7 +132,7 @@ function Navbar({ onNavigate }) {
             onMouseEnter={e => e.currentTarget.style.color = T.text}
             onMouseLeave={e => e.currentTarget.style.color = T.muted}
           >
-            Se connecter
+            Sign in
           </button>
           <button onClick={onNavigate} style={{
             fontFamily: T.fontBody, fontSize: 13, fontWeight: 600,
@@ -147,13 +144,15 @@ function Navbar({ onNavigate }) {
             onMouseEnter={e => e.currentTarget.style.background = T.accentHov}
             onMouseLeave={e => e.currentTarget.style.background = T.accent}
           >
-            Commencer →
+            Get started →
           </button>
         </div>
       </div>
     </nav>
   );
 }
+
+
 
 /* ─── Dashboard preview card ─── */
 function DashboardPreview() {
@@ -195,11 +194,12 @@ function DashboardPreview() {
         }}>● Active</span>
       </div>
 
+
       {/* KPIs */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
         {[
-          { val: "€ 3.47", lbl: "Prix calculé",       delta: "▼ −2.1% vs marché", up: false },
-          { val: "214",    lbl: "Produits traités",    delta: "▲ +38 ce mois",     up: true  },
+          { val: "€ 3.47", lbl: "Calculated price",   delta: "▼ −2.1% vs market", up: false },
+          { val: "214",    lbl: "Products processed",  delta: "▲ +38 this month",  up: true  },
         ].map((k, i) => (
           <div key={i} style={{
             background: T.surfaceAlt, borderRadius: 12, padding: "14px 16px",
@@ -220,6 +220,7 @@ function DashboardPreview() {
         ))}
       </div>
 
+
       {/* chart */}
       <div style={{
         background: T.surfaceAlt, borderRadius: 12, padding: 14, marginBottom: 14,
@@ -227,7 +228,7 @@ function DashboardPreview() {
         <div style={{
           fontFamily: T.fontBody, fontSize: 10, color: T.faint,
           textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10,
-        }}>Tendance prix — 7 jours</div>
+        }}>Price trend — 7 days</div>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 48 }}>
           {bars.map((h, i) => (
             <div key={i} style={{
@@ -240,6 +241,7 @@ function DashboardPreview() {
           ))}
         </div>
       </div>
+
 
       {/* rules */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -262,14 +264,14 @@ function DashboardPreview() {
   );
 }
 
+
+
 /* ─── Hero stats counters ─── */
 function HeroStats() {
   const ref  = useRef(null);
   const nums = useRef([]);
   const data = [
-    { val: 12000, suffix: "+",  label: "Produits analysés"  },
-    { val: 4,     suffix: "",   label: "Stratégies prêtes"  },
-    { val: 97,    suffix: "%",  label: "Précision des prix" },
+    { val: "4000000", suffix: "+", label: "Products analyzed" },
   ];
   useEffect(() => {
     const obs = new IntersectionObserver(([e]) => {
@@ -281,6 +283,7 @@ function HeroStats() {
     if (ref.current) obs.observe(ref.current);
     return () => obs.disconnect();
   }, []);
+
 
   return (
     <div ref={ref} style={{
@@ -302,6 +305,8 @@ function HeroStats() {
     </div>
   );
 }
+
+
 
 /* ─── Hero ─── */
 function Hero({ onNavigate }) {
@@ -331,23 +336,26 @@ function Hero({ onNavigate }) {
               marginBottom: 28,
             }}>
               <span style={{ width: 6, height: 6, borderRadius: 99, background: T.sage, display: "inline-block" }} />
-              Plateforme de pricing intelligent
+              Intelligent pricing platform
             </div>
+
 
             <h1 style={{
               fontFamily: T.fontHead, fontSize: "clamp(2.4rem,4.5vw,3.6rem)",
               fontWeight: 400, letterSpacing: "-0.03em", lineHeight: 1.1,
               color: T.text, marginBottom: 24,
             }}>
-              Des prix pilotés<br />par la <em style={{ fontStyle: "italic", color: T.accent }}>donnée</em>,<br />pas l'intuition.
+              Prices driven<br />by <em style={{ fontStyle: "italic", color: T.accent }}>data</em>,<br />not intuition.
             </h1>
+
 
             <p style={{
               fontFamily: T.fontBody, fontSize: "clamp(14px,1.5vw,16px)",
               color: T.muted, lineHeight: 1.75, maxWidth: "50ch", marginBottom: 32,
             }}>
-              PriceOptima analyse vos concurrents en temps réel et applique automatiquement vos stratégies de prix — règle par règle, produit par produit.
+              PriceOptima monitors your competitors in real time and automatically applies your pricing strategies — rule by rule, product by product.
             </p>
+
 
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               <button onClick={onNavigate} style={{
@@ -360,7 +368,7 @@ function Hero({ onNavigate }) {
                 onMouseEnter={e => e.currentTarget.style.background = T.accentHov}
                 onMouseLeave={e => e.currentTarget.style.background = T.accent}
               >
-                Commencer gratuitement
+                Get started for free
               </button>
               <a href="#how" style={{
                 fontFamily: T.fontBody, fontSize: 13, fontWeight: 500,
@@ -373,12 +381,14 @@ function Hero({ onNavigate }) {
                 onMouseEnter={e => { e.currentTarget.style.borderColor = T.borderStrong; e.currentTarget.style.color = T.text; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.muted; }}
               >
-                Voir comment ça marche
+                See how it works
               </a>
             </div>
 
+
             <HeroStats />
           </div>
+
 
           {/* right */}
           <div aria-hidden="true"><DashboardPreview /></div>
@@ -387,6 +397,8 @@ function Hero({ onNavigate }) {
     </section>
   );
 }
+
+
 
 /* ─── Features ─── */
 function Features() {
@@ -398,8 +410,8 @@ function Features() {
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
         </svg>
       ),
-      title: "Veille concurrentielle temps réel",
-      desc:  "Collecte et analyse des prix concurrents depuis Open Prices et Open Food Facts. Toujours au fait des mouvements du marché.",
+      title: "Real-time competitive monitoring",
+      desc:  "Collects and analyzes competitor prices from Open Prices and Open Food Facts. Always up to date with market movements.",
     },
     {
       icon: (
@@ -409,8 +421,8 @@ function Features() {
           <rect x="3" y="14" width="7" height="7" /><path d="M14 17h6M17 14v6" />
         </svg>
       ),
-      title: "Règles de pricing modulaires",
-      desc:  "Configurez des règles indépendantes — Floor Price, Competitor Beat, Market Average — et combinez-les avec des coefficients pondérés.",
+      title: "Modular pricing rules",
+      desc:  "Configure independent rules — Floor Price, Competitor Beat, Market Average — and combine them with weighted coefficients.",
     },
     {
       icon: (
@@ -420,8 +432,18 @@ function Features() {
           <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
         </svg>
       ),
-      title: "Stratégies prêtes & custom",
-      desc:  "Choisissez parmi AGGRESSIVE, COMPETITIVE, ALIGNED ou construisez votre propre stratégie avec des règles et coefficients personnalisés.",
+      title: "Ready-made & custom strategies",
+      desc:  "Choose from AGGRESSIVE, COMPETITIVE, ALIGNED or build your own strategy with custom rules and coefficients.",
+    },
+    {
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+        </svg>
+      ),
+      title: "AI strategy recommendations",
+      desc: "Our AI analyzes your KPIs, performance metrics, and market positioning to recommend the optimal pricing strategy — you simply approve or reject.",
     },
     {
       icon: (
@@ -431,10 +453,11 @@ function Features() {
           <line x1="6" y1="20" x2="6" y2="14" />
         </svg>
       ),
-      title: "Pipeline Airflow automatisé",
-      desc:  "Les DAGs Apache Airflow orchestrent toute la chaîne — collecte, transformation SQLMesh, calcul — sans aucune intervention manuelle.",
+      title: "Automated Airflow pipeline",
+      desc:  "Apache Airflow DAGs orchestrate the entire chain — collection, SQLMesh transformation, calculation — with zero manual intervention.",
     },
   ];
+
 
   return (
     <section id="features" style={{ padding: "clamp(3.5rem,7vw,5.5rem) 0" }}>
@@ -448,20 +471,21 @@ function Features() {
             fontFamily: T.fontBody, fontSize: 10, fontWeight: 700,
             color: T.faint, letterSpacing: "0.12em", textTransform: "uppercase",
             marginBottom: 14,
-          }}>Fonctionnalités</div>
+          }}>Features</div>
           <h2 style={{
             fontFamily: T.fontHead, fontSize: "clamp(1.8rem,3vw,2.6rem)",
             fontWeight: 400, letterSpacing: "-0.025em", color: T.text,
             lineHeight: 1.15, marginBottom: 16,
           }}>
-            Tout ce qu'il faut<br />pour un pricing compétitif.
+            Everything you need<br />for competitive pricing.
           </h2>
           <p style={{
             fontFamily: T.fontBody, fontSize: 14, color: T.muted, lineHeight: 1.7,
           }}>
-            Un pipeline complet, de la collecte des prix concurrents jusqu'au calcul automatique du prix optimal.
+            A complete pipeline, from competitor price collection to automatic optimal price calculation.
           </p>
         </div>
+
 
         {/* grid */}
         <div style={{
@@ -499,8 +523,9 @@ function Features() {
           ))}
         </div>
 
+
         {/* strategy preview inset */}
-        <div className="lp-reveal" style={{
+        <div className="lp-reveal lp-inset-grid" style={{
           marginTop: 16,
           background: T.surface,
           border: `1px solid ${T.border}`,
@@ -509,28 +534,28 @@ function Features() {
           gridTemplateColumns: "1fr 1fr",
           gap: "clamp(1.5rem,4vw,3rem)",
           alignItems: "center",
-        }} className="lp-reveal lp-inset-grid">
+        }}>
           <div>
             <div style={{
               fontFamily: T.fontBody, fontSize: 10, fontWeight: 700,
               color: T.faint, letterSpacing: "0.12em", textTransform: "uppercase",
               marginBottom: 12,
-            }}>Stratégie AGGRESSIVE — coefficients</div>
+            }}>AGGRESSIVE strategy — coefficients</div>
             <h3 style={{
               fontFamily: T.fontHead, fontSize: "clamp(1.3rem,2vw,1.7rem)",
               fontWeight: 400, color: T.text, marginBottom: 12, letterSpacing: "-0.02em",
-            }}>Pondérez chaque règle selon votre priorité.</h3>
+            }}>Weight each rule according to your priorities.</h3>
             <p style={{
               fontFamily: T.fontBody, fontSize: 13, color: T.muted, lineHeight: 1.7,
             }}>
-              Chaque stratégie est composée de règles indépendantes auxquelles vous assignez un poids. La somme des coefficients doit toujours être égale à 1.0.
+              Each strategy is composed of independent rules to which you assign a weight. The sum of all coefficients must always equal 1.0.
             </p>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {[
-              { name: "Competitor Beat", pct: 50, color: T.accent     },
-              { name: "Floor Price",     pct: 30, color: T.sage       },
-              { name: "Market Average",  pct: 20, color: T.warm       },
+              { name: "Competitor Beat", pct: 50, color: T.accent },
+              { name: "Floor Price",     pct: 30, color: T.sage   },
+              { name: "Market Average",  pct: 20, color: T.warm   },
             ].map((r) => (
               <div key={r.name}>
                 <div style={{
@@ -559,13 +584,17 @@ function Features() {
   );
 }
 
+
+
 /* ─── How It Works ─── */
 function HowItWorks() {
   const steps = [
-    { num: "01", title: "Sélectionnez vos produits",    desc: "Par EAN, marque ou catégorie. Importez votre catalogue depuis Open Food Facts ou saisissez vos EANs manuellement." },
-    { num: "02", title: "Configurez une stratégie",     desc: "Choisissez AGGRESSIVE, COMPETITIVE, ALIGNED ou créez une stratégie CUSTOM en ajustant les coefficients de chaque règle." },
-    { num: "03", title: "Lancez le calcul",             desc: "Le moteur de pricing applique vos règles, Airflow orchestre l'exécution et vous obtenez vos prix optimaux en quelques secondes." },
+    { num: "01", title: "Select your products",    desc: "By EAN, brand, category." },
+    { num: "02", title: "Configure a strategy",    desc: "Choose AGGRESSIVE, COMPETITIVE, ALIGNED or create a CUSTOM strategy by adjusting the coefficients of each rule." },
+    { num: "03", title: "Review AI recommendations", desc: "The AI analyzes your KPIs and market position, then suggests the best pricing strategy. One click to approve and apply — or reject and keep your current setup." },
+    { num: "04", title: "Run the calculation",     desc: "The pricing engine applies your rules, Airflow orchestrates the execution, and you get your optimal prices in seconds." },
   ];
+
 
   return (
     <section id="how" style={{ padding: "clamp(3.5rem,7vw,5.5rem) 0", background: T.surfaceAlt }}>
@@ -578,20 +607,21 @@ function HowItWorks() {
             fontFamily: T.fontBody, fontSize: 10, fontWeight: 700,
             color: T.faint, letterSpacing: "0.12em", textTransform: "uppercase",
             marginBottom: 14,
-          }}>Comment ça marche</div>
+          }}>How it works</div>
           <h2 style={{
             fontFamily: T.fontHead, fontSize: "clamp(1.8rem,3vw,2.6rem)",
             fontWeight: 400, letterSpacing: "-0.025em", color: T.text,
             lineHeight: 1.15, marginBottom: 14,
-          }}>Simple. Puissant. Automatique.</h2>
+          }}>Simple. Powerful. Automatic.</h2>
           <p style={{ fontFamily: T.fontBody, fontSize: 14, color: T.muted, lineHeight: 1.7 }}>
-            Trois étapes de la donnée brute au prix optimal.
+            Three steps from raw data to optimal price.
           </p>
         </div>
 
+
         <div style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3,1fr)",
+          gridTemplateColumns: "repeat(4,1fr)",
           gap: 2,
           background: T.border,
           border: `1px solid ${T.border}`,
@@ -624,6 +654,8 @@ function HowItWorks() {
   );
 }
 
+
+
 /* ─── CTA ─── */
 function CTA({ onNavigate }) {
   return (
@@ -643,13 +675,13 @@ function CTA({ onNavigate }) {
             fontWeight: 400, color: "#FDFCFA",
             letterSpacing: "-0.03em", lineHeight: 1.15, maxWidth: 520,
           }}>
-            Prêt à optimiser vos prix ?
+            Ready to optimize your prices?
           </h2>
           <p style={{
             fontFamily: T.fontBody, fontSize: 14,
             color: "rgba(253,252,250,0.65)", maxWidth: "50ch", lineHeight: 1.7,
           }}>
-            Démarrez en quelques minutes. Choisissez une stratégie, sélectionnez vos produits, et laissez PriceOptima faire le reste.
+            Get started in minutes. Choose a strategy, select your products, and let PriceOptima do the rest.
           </p>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
             <button onClick={onNavigate} style={{
@@ -662,7 +694,7 @@ function CTA({ onNavigate }) {
               onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
               onMouseLeave={e => e.currentTarget.style.opacity = "1"}
             >
-              Commencer maintenant
+              Start now
             </button>
             <a href="#features" style={{
               fontFamily: T.fontBody, fontSize: 13, fontWeight: 500,
@@ -676,7 +708,7 @@ function CTA({ onNavigate }) {
               onMouseEnter={e => e.currentTarget.style.background = "rgba(253,252,250,0.14)"}
               onMouseLeave={e => e.currentTarget.style.background = "rgba(253,252,250,0.08)"}
             >
-              Explorer les fonctionnalités
+              Explore features
             </a>
           </div>
         </div>
@@ -684,6 +716,8 @@ function CTA({ onNavigate }) {
     </section>
   );
 }
+
+
 
 /* ─── Footer ─── */
 function Footer() {
@@ -698,12 +732,12 @@ function Footer() {
         display: "flex", alignItems: "center",
         justifyContent: "space-between", flexWrap: "wrap", gap: 16,
       }}>
-        <Logo />
+        <Brand />
         <span style={{
           fontFamily: T.fontBody, fontSize: 12, color: T.faint,
-        }}>© 2026 PriceOptima — Projet PFE Data Engineering</span>
+        }}>© 2026 PriceOptima </span>
         <div style={{ display: "flex", gap: 24 }}>
-          {["À propos", "Confidentialité", "Contact"].map(l => (
+          {["About", "Privacy", "Contact"].map(l => (
             <a key={l} href="#" style={{
               fontFamily: T.fontBody, fontSize: 12, color: T.faint,
               textDecoration: "none", transition: "color 0.15s",
@@ -718,9 +752,12 @@ function Footer() {
   );
 }
 
+
+
 /* ─── Page styles (scoped, ne polluent pas global.css) ─── */
 const PAGE_STYLE = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap');
+
 
   .lp-reveal {
     opacity: 0;
@@ -732,6 +769,7 @@ const PAGE_STYLE = `
     transform: none;
   }
 
+
   @media (max-width: 860px) {
     .lp-hero-grid  { grid-template-columns: 1fr !important; }
     .lp-hero-grid > div:last-child { display: none; }
@@ -740,12 +778,16 @@ const PAGE_STYLE = `
   }
 `;
 
+
+
 /* ─── Root ─── */
 export default function LandingPage() {
   const navigate = useNavigate();
   useReveal();
 
+
   const go = (e) => { e?.preventDefault?.(); navigate("/login"); };
+
 
   return (
     <>

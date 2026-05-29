@@ -166,14 +166,15 @@ class JobService:
                     "final_price":    r["final_price"],
                     "price_change":   r["price_change"],
                     "change_pct":     pct,
-                    "contributions":  r["contributions"]
+                    "contributions":  r["contributions"],
+                    "strategy_name":  strategy_name,
                 })
                 price_changes.append({
                     "product_id":     ean,
                     "old_price":      r["original_price"],
                     "new_price":      r["final_price"],
                     "change_pct":     pct,
-                    "rule_triggered": r["contributions"][0]["rule"] if r["contributions"] else "N/A"
+                    "strategy_triggered": strategy_name
                 })
             except Exception as e:
                 logger.warning(f"compute_price failed for EAN {ean}: {e}")

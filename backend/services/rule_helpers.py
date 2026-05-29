@@ -15,18 +15,16 @@ logger = logging.getLogger("llm_service")
 # ─────────────────────────────────────────────────Static helpers─────────────────────────────────────────────────
 
 
-def normalize_rule_coefficients(
-    rules: List[RuleInStrategy],
-) -> List[RuleInStrategy]:
+def normalize_rule_coefficients(rules):
     total = sum(float(r.coefficient) for r in rules)
     if total <= 0:
-        raise HTTPException(status_code=502, detail="Invalid coefficient sum.")
-    for rule in rules:
-        rule.coefficient = round(float(rule.coefficient) / total, 3)
-    # Correction du delta d'arrondi sur la dernière règle
-    delta = round(1.0 - round(sum(float(r.coefficient) for r in rules), 3), 3)
-    if rules and delta != 0:
-        rules[-1].coefficient = round(float(rules[-1].coefficient) + delta, 3)
+        return rules
+    for r in rules:
+        r.coefficient = round(float(r.coefficient) / total, 2)  # ← ajoute round(..., 2)
+    # Ajuste le dernier pour que la somme soit exactement 1.0
+    diff = round(1.0 - sum(float(r.coefficient) for r in rules), 2)
+    if rules:
+        rules[-1].coefficient = round(float(rules[-1].coefficient) + diff, 2)
     return rules
 
 
@@ -65,14 +63,43 @@ def clamp_existing_rule_params(
     rid = rule.rule_id
     if not rid or rid not in rules_catalog:
         return rule
-    for pname, pdef in (rules_catalog[rid].get("params") or {}).items():
+
+    allowed_params = rules_catalog[rid].get("params") or {}
+
+    # ✅ AJOUT : supprimer les clés inventées par le LLM
+    invalid_keys = [k for k in list(rule.params.keys()) if k not in allowed_params]
+    if invalid_keys:
+        logger.warning("Unknown param keys %s for rule %s — removing", invalid_keys, rid)
+        for k in invalid_keys:
+            del rule.params[k]
+
+    # Clamp des valeurs (code existant — ne pas toucher)
+    for pname, pdef in allowed_params.items():
         if pname in rule.params and isinstance(pdef, dict) and pdef.get("type") == "float":
             try:
-                rule.params[pname] = round(
-                    max(pdef["min"], min(pdef["max"], float(rule.params[pname]))), 2
-                )
+                rule.params[pname] = round(max(pdef["min"], min(pdef["max"], float(rule.params[pname]))), 2)
             except Exception:
                 logger.warning("Invalid param %s for rule %s", pname, rid)
+    return rule
+
+
+def inject_default_params(
+    rule: RuleInStrategy,
+    rules_catalog: Dict[str, Dict[str, Any]],
+) -> RuleInStrategy:
+    """Injecte les params par défaut du catalog si le LLM n'en a pas fourni."""
+    rid = rule.rule_id
+    if not rid or rid not in rules_catalog:
+        return rule
+
+    defaults = {}
+    for pname, pdef in (rules_catalog[rid].get("params") or {}).items():
+        if isinstance(pdef, dict) and "default" in pdef:
+            if pname not in rule.params:  #  injecter seulement les clés absentes
+                defaults[pname] = pdef["default"]
+
+    if defaults:
+        rule.params = {**rule.params, **defaults}
     return rule
 
 

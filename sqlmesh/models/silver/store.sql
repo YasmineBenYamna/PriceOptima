@@ -1,7 +1,6 @@
 MODEL (
   name        silver.store,
   kind        FULL,
-  cron   '@weekly', 
   grain       (store_id),
   description 'Référentiel dédupliqué des points de vente physiques, normalisé depuis prices_raw. Enrichi avec géolocalisation OSM, mapping enseigne canonique via matching ILIKE robuste sur nom complet.'
 );

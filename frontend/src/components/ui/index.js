@@ -8,7 +8,6 @@ export { Button, IconButton }        from './Button.jsx';
 export { Spinner, PageSpinner }      from './Spinner.jsx';
 export { StatusBadge, Badge }        from './Badge.jsx';
 export { Field }                     from './Field.jsx';
-export { Logo }                      from './Logo.jsx';
 
 export { Toggle }                    from './Toggle.jsx';
 export { Stepper }                   from './Stepper.jsx';

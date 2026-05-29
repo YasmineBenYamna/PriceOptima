@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from models.rule import Rule, CustomRule
 from typing import Optional
 
@@ -39,12 +41,12 @@ class RuleRepository:
             # Custom rules table (created by users)
             custom = session.query(CustomRule).filter(CustomRule.id == rule_id).first()
             if custom:
-                # Wrap CustomRule as a Rule-compatible object so callers work uniformly
-                rule = Rule(
+                rule = SimpleNamespace(
                     id          = custom.id,
                     name        = custom.name,
                     description = custom.description,
                     params      = {},
+                    formula     = custom.formula,   # ← préservé
                     is_system   = False,
                     active      = custom.active,
                     created_at  = custom.created_at,

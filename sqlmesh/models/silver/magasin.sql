@@ -2,7 +2,6 @@
 MODEL (
   name        silver.magasin,
   kind        FULL,
-  cron   '@weekly', 
   grain       (magasin_id),
   description 'Entité enseigne consolidée...'
 );

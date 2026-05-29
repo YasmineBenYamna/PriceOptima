@@ -57,7 +57,7 @@ class BatchRequest(BaseModel):
     eans:               Optional[List[str]] = None
     category:           Optional[str]       = None
     brand:              Optional[str]       = None
-    limit:              Optional[int]       = 50
+    limit:              Optional[int]       = 50000
     system_strategy_id: Optional[str]       = None
     user_strategy_id:   Optional[str]       = None
 

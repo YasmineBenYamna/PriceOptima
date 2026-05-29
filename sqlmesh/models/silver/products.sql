@@ -1,9 +1,9 @@
 MODEL (
   name        silver.products,
+  stamp       'v2',
   kind        INCREMENTAL_BY_UNIQUE_KEY (
     unique_key  product_code
   ),
-  cron   '@weekly',
   grain       (product_id),
   description 'Référentiel produits Silver. Dédupliqué sur product_code, normalisé depuis products_raw (multi-sources : food, beauty, petfood, other). Champs communs à plat, enrichi avec métriques de qualité et flags de complétude. Référence silver.brand via brand_id. Les catégories sont gérées via silver.product_category (N-N).'
 );
@@ -12,11 +12,6 @@ WITH
 
 -- ============================================================
 -- ÉTAPE 1 : Déduplication — un code = un produit (dernier updated_at)
---
--- CORRECTION : suppression du filtre inserted_at >= CURRENT_DATE - 1.
---   Ce filtre excluait 100% des données lors du backfill seed car tous
---   les produits avaient été insérés avant J-1. SQLMesh gère la
---   déduplication incrémentale via unique_key = product_code.
 -- ============================================================
 deduped_raw AS (
   SELECT DISTINCT ON (code)

@@ -1,21 +1,32 @@
-from models.strategy import Strategy, UserStrategy
-from sqlalchemy.orm import make_transient
+from models.strategy import Strategy, UserStrategy, UserStrategyRule
+from sqlalchemy.orm import make_transient, selectinload
 from typing import Optional
+
 
 
 class StrategyRepository:
     """Accès aux stratégies système et utilisateur."""
 
+
     def __init__(self, db_manager):
         self._db = db_manager
+
 
     def _load_rules(self, s):
         """Précharge les attributs des règles pour éviter DetachedInstanceError."""
         _ = [
-            (sr.rule.name, sr.rule.params, sr.rule.active, sr.rule.id,
-             sr.rule.description, sr.coefficient, sr.rule_id)
+            (
+                sr.rule.name        if sr.rule else sr.rule_id,
+                sr.rule.params      if sr.rule else {},
+                sr.rule.active      if sr.rule else True,
+                sr.rule.id          if sr.rule else sr.rule_id,
+                sr.rule.description if sr.rule else "",
+                sr.coefficient,
+                sr.rule_id
+            )
             for sr in s.rules
         ]
+
 
     def find_all_system(self, name: Optional[str] = None, active: Optional[bool] = None):
         """Retourne les stratégies système avec filtres optionnels."""
@@ -31,6 +42,7 @@ class StrategyRepository:
             session.expunge_all()
             return strats
 
+
     def find_system_by_id(self, strategy_id: str):
         """Recherche une stratégie système par son identifiant."""
         with self._db.session_scope() as session:
@@ -41,18 +53,29 @@ class StrategyRepository:
             session.expunge_all()
             return s
 
+
     def find_user_strategy(self, strategy_id: str, user_id: str):
-        """Recherche une stratégie utilisateur par son id et user_id."""
+        """Recherche une stratégie utilisateur par son identifiant."""
         with self._db.session_scope() as session:
-            s = session.query(UserStrategy).filter(
-                UserStrategy.id      == strategy_id,
-                UserStrategy.user_id == user_id
-            ).first()
+            s = (
+                session.query(UserStrategy)
+                .options(
+                    selectinload(UserStrategy.rules)
+                    .selectinload(UserStrategyRule.rule)  # ← charge sr.rule dans la session
+                )
+                .filter(
+                    UserStrategy.id      == strategy_id,
+                    UserStrategy.user_id == user_id,
+                )
+                .first()
+            )
             if not s:
                 return None
+            # Forcer la lecture complète AVANT expunge
             self._load_rules(s)
             session.expunge_all()
             return s
+
 
     def find_user_strategies(self, user_id: str, name: Optional[str] = None, is_custom: Optional[bool] = None):
         """
@@ -72,6 +95,7 @@ class StrategyRepository:
             session.expunge_all()
             return strats
 
+
     def find_existing_history(self, user_id: str, base_strategy_id: str):
         """
         Vérifie si une entrée historique (is_custom=False) existe déjà
@@ -89,6 +113,7 @@ class StrategyRepository:
             session.expunge_all()
             return s
 
+
     def create_user_strategy(self, user_strategy: UserStrategy) -> UserStrategy:
         """Crée une nouvelle stratégie utilisateur."""
         with self._db.session_scope() as session:
@@ -98,6 +123,7 @@ class StrategyRepository:
             session.expunge(user_strategy)
             make_transient(user_strategy)
             return user_strategy
+
 
     def delete_user_strategy(self, user_strategy: UserStrategy):
         """Supprime une stratégie utilisateur."""

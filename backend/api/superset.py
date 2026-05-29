@@ -1,54 +1,32 @@
 import httpx
 import os
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from config.dependencies import auth_service
 
 router = APIRouter(prefix="/api/v1/superset", tags=["superset"])
 
-SUPERSET_URL       = os.getenv("SUPERSET_URL",            "http://superset:8088")
+SUPERSET_URL        = os.getenv("SUPERSET_URL",            "http://superset:8088")
 SUPERSET_ADMIN_USER = os.getenv("SUPERSET_ADMIN_USERNAME", "admin")
 SUPERSET_ADMIN_PASS = os.getenv("SUPERSET_ADMIN_PASSWORD", "admin123")
 
-# Two dashboards available in the application
-DASHBOARD_IDS = {
-    "1": os.getenv("SUPERSET_DASHBOARD_ID_1", "1"),
-    "2": os.getenv("SUPERSET_DASHBOARD_ID_2", "2"),
-}
 
 security = HTTPBearer()
 
-
-@router.get("/token")
+@router.get("/guest-token/{dashboard_uuid}")
 async def get_guest_token(
-    dashboard: str = Query("1", description="Dashboard ID — '1' or '2'"),
+    dashboard_uuid: str,
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
-    """
-    Generates a Superset guest token for the requested dashboard.
-    RLS is applied using the user's magasin_id so each user only sees
-    data for their own store.
-    """
     user = auth_service.get_current_user(
         authorization=f"Bearer {credentials.credentials}"
     )
 
-    # Validate requested dashboard
-    if dashboard not in DASHBOARD_IDS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid dashboard '{dashboard}'. Valid values: {list(DASHBOARD_IDS.keys())}"
-        )
-    dashboard_id = DASHBOARD_IDS[dashboard]
-
-    # RLS clause — filters all datasets by the user's magasin_id
-    # Adjust the column name to match your Superset dataset schema
-    rls_clause = f"magasin_id = '{user.magasin_id}'" if user.magasin_id else None
+    rls_clause = f"nom_enseigne = '{user.company_name}'" if user.company_name else None
 
     try:
         async with httpx.AsyncClient(base_url=SUPERSET_URL, timeout=30.0) as client:
 
-            # 1. Authenticate as Superset admin
             r_login = await client.post(
                 "/api/v1/security/login",
                 json={
@@ -61,7 +39,6 @@ async def get_guest_token(
             r_login.raise_for_status()
             access_token = r_login.json()["access_token"]
 
-            # 2. Get CSRF token
             r_csrf = await client.get(
                 "/api/v1/security/csrf_token/",
                 headers={"Authorization": f"Bearer {access_token}"},
@@ -69,9 +46,8 @@ async def get_guest_token(
             r_csrf.raise_for_status()
             csrf_token = r_csrf.json()["result"]
 
-            # 3. Generate guest token with RLS
             rls = [{"clause": rls_clause}] if rls_clause else []
-
+            print(f"🔍 USER: {user.company_name} | RLS: {rls}", flush=True)
             r_guest = await client.post(
                 "/api/v1/security/guest_token/",
                 headers={
@@ -80,10 +56,10 @@ async def get_guest_token(
                     "Referer":       SUPERSET_URL,
                 },
                 json={
-                    "resources": [{"type": "dashboard", "id": dashboard_id}],
+                    "resources": [{"type": "dashboard", "id": dashboard_uuid}],
                     "rls":       rls,
                     "user": {
-                        "username":   str(user.magasin_id or user.company_name or user.work_mail),
+                        "username":   str(user.company_name or user.work_mail),
                         "first_name": str(user.full_name or "User"),
                         "last_name":  "",
                     },
@@ -98,7 +74,4 @@ async def get_guest_token(
             detail=f"Superset error {e.response.status_code}: {e.response.text}"
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal error while generating Superset guest token: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")

@@ -30,17 +30,18 @@ def import_csv_route(
     auth_service.get_current_user(authorization)
     return product_service.import_csv(file.file.read().decode("utf-8"))
 
-
 @router.get("/categories")
-def categories(authorization: Optional[str] = Header(None)):
-    user = auth_service.get_current_user(authorization)  # ← user au lieu de juste valider
-    return product_service.get_categories(magasin_id=user.magasin_id)  # ← filtre magasin
-
+def categories(
+    gold_only: bool = Query(False),
+    authorization: Optional[str] = Header(None)
+):
+    user = auth_service.get_current_user(authorization)
+    return product_service.get_categories(magasin_id=user.magasin_id, gold_only=gold_only)
 
 @router.get("/by-category/{category}")
 def by_category(
     category: str,
-    limit: int = Query(50),
+    limit: int = Query(200),
     authorization: Optional[str] = Header(None)
 ):
     user = auth_service.get_current_user(authorization)
@@ -49,12 +50,12 @@ def by_category(
 
 @router.get("/brands")
 def brands(
-    limit: int = Query(50),
+    limit: int = Query(200),
+    gold_only: bool = Query(False),
     authorization: Optional[str] = Header(None)
 ):
     user = auth_service.get_current_user(authorization)
-    return product_service.get_brands(limit, magasin_id=user.magasin_id)  # ← filtre magasin
-
+    return product_service.get_brands(limit, magasin_id=user.magasin_id, gold_only=gold_only)
 
 @router.get("/by-brand/{brand}")
 def by_brand(

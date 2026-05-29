@@ -4,13 +4,49 @@ from schemas.strategy import UserStrategyResponse, RuleInStrategy
 from typing import Optional
 
 
+
 class StrategyService:
     """Gère les stratégies de pricing système et personnalisées utilisateur."""
+
 
     def __init__(self, strategy_repo, rule_repo, strategy_rule_repo):
         self._strategy_repo      = strategy_repo
         self._rule_repo          = rule_repo
         self._strategy_rule_repo = strategy_rule_repo
+
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+
+    def _resolve_rule_name(self, sr) -> str:
+        """Cherche le nom dans rules (system) ET custom_rules (user)."""
+        if sr.rule and sr.rule.name:
+            return sr.rule.name
+        found = self._rule_repo.find_by_id(str(sr.rule_id))
+        return found.name if found else str(sr.rule_id)
+
+
+    def _resolve_rule_desc(self, sr) -> str:
+        """Cherche la description dans rules ET custom_rules."""
+        if sr.rule and sr.rule.description:
+            return sr.rule.description
+        found = self._rule_repo.find_by_id(str(sr.rule_id))
+        return (found.description if found else "") or ""
+
+
+    def _resolve_rule_active(self, sr) -> bool:
+        if sr.rule:
+            return sr.rule.active
+        found = self._rule_repo.find_by_id(str(sr.rule_id))
+        return found.active if found else True
+
+
+    def _resolve_rule_params(self, sr) -> dict:
+        if sr.rule:
+            return sr.rule.params or {}
+        found = self._rule_repo.find_by_id(str(sr.rule_id))
+        return (found.params if found else {}) or {}
+
 
     def _to_response(self, s) -> UserStrategyResponse:
         return UserStrategyResponse(
@@ -22,26 +58,33 @@ class StrategyService:
             rules=[
                 RuleInStrategy(
                     rule_id     = str(sr.rule_id),
-                    name        = sr.rule.name,
-                    description = sr.rule.description or "",
+                    name        = self._resolve_rule_name(sr),
+                    description = self._resolve_rule_desc(sr),
                     coefficient = sr.coefficient,
-                    active      = sr.rule.active,
-                    params      = sr.rule.params or {}
+                    active      = self._resolve_rule_active(sr),
+                    params      = self._resolve_rule_params(sr),
                 )
                 for sr in s.rules
             ]
         )
 
+
     def _validate_coefficients(self, rules):
-        """Vérifie que la somme des coefficients est égale à 1.0."""
         if not rules:
             raise HTTPException(status_code=400, detail={"error": "VALIDATION_ERROR", "message": "Rules vides"})
-        total = sum(r.coefficient for r in rules)
+        active_rules = [r for r in rules if getattr(r, 'active', True)]
+        if not active_rules:
+            raise HTTPException(status_code=400, detail={"error": "VALIDATION_ERROR", "message": "Au moins une règle active requise"})
+        total = sum(r.coefficient for r in active_rules)
         if not (0.99 <= total <= 1.01):
             raise HTTPException(status_code=400, detail={
                 "error":   "VALIDATION_ERROR",
-                "message": f"Somme coefficients = {round(total, 4)}, doit = 1.0"
+                "message": f"Somme coefficients (règles actives) = {round(total, 4)}, doit = 1.0"
             })
+
+
+    # ── Lecture ───────────────────────────────────────────────────────────────
+
 
     def list_all(self, user_id: str, name: Optional[str] = None) -> dict:
         """
@@ -65,7 +108,6 @@ class StrategyService:
                 "source":           "system"
             })
         for s in user_strats:
-            # Double-check: never expose is_custom=False even if repo ignores the filter
             if not s.is_custom:
                 continue
             result.append({
@@ -78,6 +120,7 @@ class StrategyService:
                 "source":           "user"
             })
         return {"strategies": result, "total": len(result)}
+
 
     def list_user_strategies(self, user_id: str, name: Optional[str] = None) -> dict:
         """
@@ -87,7 +130,6 @@ class StrategyService:
         user_strats = self._strategy_repo.find_user_strategies(user_id, name=name, is_custom=True)
         result = []
         for s in user_strats:
-            # Double-check: never expose is_custom=False even if repo ignores the filter
             if not s.is_custom:
                 continue
             result.append({
@@ -101,6 +143,7 @@ class StrategyService:
             })
         return {"strategies": result, "total": len(result)}
 
+
     def get_system_strategy(self, strategy_id: str) -> dict:
         """Retourne une stratégie système par son identifiant."""
         s = self._strategy_repo.find_system_by_id(strategy_id)
@@ -108,12 +151,17 @@ class StrategyService:
             raise HTTPException(status_code=404, detail="Strategy introuvable")
         return self._to_response(s).model_dump()
 
+
     def get_user_strategy(self, strategy_id: str, user_id: str) -> dict:
         """Retourne une stratégie utilisateur par son identifiant."""
         s = self._strategy_repo.find_user_strategy(strategy_id, user_id)
         if not s:
             raise HTTPException(status_code=404, detail="User strategy introuvable")
         return self._to_response(s).model_dump()
+
+
+    # ── Résolution pour pricing ───────────────────────────────────────────────
+
 
     def resolve_strategy(self, system_strategy_id, user_strategy_id, user_id: str):
         """
@@ -133,12 +181,10 @@ class StrategyService:
             if not sys_s:
                 raise HTTPException(status_code=404, detail="Strategy système introuvable")
 
-            # Vérifier si une entrée historique existe déjà pour éviter les doublons
             existing = self._strategy_repo.find_existing_history(user_id, system_strategy_id)
             if existing:
                 return existing
 
-            # Créer l'entrée historique is_custom=False (invisible dans l'interface)
             entry = UserStrategy(
                 user_id          = user_id,
                 base_strategy_id = system_strategy_id,
@@ -162,11 +208,11 @@ class StrategyService:
 
         raise HTTPException(status_code=400, detail="Fournir system_strategy_id ou user_strategy_id")
 
+
+    # ── CRUD user strategies ──────────────────────────────────────────────────
+
+
     def create_user_strategy(self, body, user_id: str) -> dict:
-        """
-        Crée une nouvelle stratégie custom pour l'utilisateur.
-        Enregistre dans user_strategies (is_custom=True) + user_strategy_rules.
-        """
         self._validate_coefficients(body.rules)
 
         s = UserStrategy(
@@ -174,7 +220,7 @@ class StrategyService:
             base_strategy_id = body.base_strategy_id,
             name             = body.name.upper(),
             description      = body.description or "",
-            is_custom        = getattr(body, 'is_custom', True),  # respect value sent by frontend
+            is_custom        = getattr(body, 'is_custom', True),
         )
         s = self._strategy_repo.create_user_strategy(s)
 
@@ -182,7 +228,10 @@ class StrategyService:
         for r in body.rules:
             rule = self._rule_repo.find_by_id(r.rule_id)
             if not rule:
-                raise HTTPException(status_code=400, detail=f"Rule '{r.rule_id}' introuvable")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Rule '{r.rule_id}' introuvable"
+                )
             rules_to_add.append(
                 UserStrategyRule(
                     user_strategy_id = s.id,
@@ -194,6 +243,7 @@ class StrategyService:
 
         result = self._strategy_repo.find_user_strategy(s.id, user_id)
         return self._to_response(result).model_dump()
+
 
     def update_user_strategy(self, strategy_id: str, body, user_id: str) -> dict:
         """Met à jour une stratégie custom existante."""
@@ -219,7 +269,7 @@ class StrategyService:
                     UserStrategyRule(
                         user_strategy_id = strategy_id,
                         rule_id          = r.rule_id,
-                        coefficient      = r.coefficient
+                        coefficient      = r.coefficient,
                     )
                 )
             self._strategy_rule_repo.add_user_rules_bulk(rules_to_add)
@@ -227,6 +277,7 @@ class StrategyService:
 
         result = self._strategy_repo.find_user_strategy(strategy_id, user_id)
         return self._to_response(result).model_dump()
+
 
     def delete_user_strategy(self, strategy_id: str, user_id: str):
         """Supprime une stratégie custom de l'utilisateur."""

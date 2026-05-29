@@ -79,7 +79,14 @@ def post_job(body: JobCreate, authorization: Optional[str] = Header(None)):
 def del_job(job_id: str, authorization: Optional[str] = Header(None)):
     """Supprime un job de l'utilisateur connecté."""
     user = auth_service.get_current_user(authorization)
-    job  = job_repo.find_by_id(job_id)
-    if not job:                raise HTTPException(status_code=404, detail="Job introuvable")
-    if job.user_id != user.id: raise HTTPException(status_code=403, detail="Forbidden")
-    job_repo.delete(job)
+    job = job_repo.find_by_id(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job introuvable")
+    if job.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    deleted = job_repo.delete(job_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Job introuvable")
+    return

@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from psycopg2.extras import execute_values
 from psycopg2.extensions import ISOLATION_LEVEL_DEFAULT
+
 from utils.common import (
     get_db_connection,
     PRICES_COLUMNS,

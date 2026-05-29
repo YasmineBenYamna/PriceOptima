@@ -23,10 +23,17 @@ const RULE_ICON_COLORS = [
   { bg: '#FEF2F2', color: '#dc2626' },
 ];
 
+// ─── Helper : extrait une valeur scalaire depuis un param DB (schéma ou valeur directe) ──
+function getParamValue(llmVal, schemaOrVal, fallback) {
+  if (llmVal !== undefined && llmVal !== null) return llmVal;
+  if (schemaOrVal !== undefined && schemaOrVal !== null) {
+    if (typeof schemaOrVal === 'object') return schemaOrVal.default ?? fallback;
+    return schemaOrVal;
+  }
+  return fallback;
+}
+
 // ─── Modal Add New Rule ────────────────────────────────────────────────────────
-// The modal validates only the rule's own coefficient (0.01–1).
-// It does NOT block based on the current sum — the user is free to add rules
-// even when the total exceeds 1.0. The "Apply Changes" button enforces sum = 1.
 
 function NewCustomRuleModal({ onClose, onAdd }) {
   const [form, setForm] = useState({
@@ -40,9 +47,6 @@ function NewCustomRuleModal({ onClose, onAdd }) {
     if (isNaN(coeff) || coeff <= 0 || coeff > 1) {
       return setErr('Coefficient must be between 0.01 and 1.');
     }
-
-    // Rule created locally with a temp ID.
-    // Persisted to the DB (custom rule) when "Apply Changes" is triggered.
     const tempId = `custom_${Date.now()}`;
     onAdd({
       id: tempId,
@@ -52,7 +56,6 @@ function NewCustomRuleModal({ onClose, onAdd }) {
       coefficient: coeff,
       formula: form.formula.trim() || null,
     });
-
     onClose();
   };
 
@@ -144,14 +147,9 @@ function CoeffErrorBanner({ coeffSum, activeCount }) {
 
   return (
     <div style={{
-      background: '#FEF2F2',
-      border: '1.5px solid #FCA5A5',
-      borderRadius: 10,
-      padding: '12px 16px',
-      display: 'flex',
-      alignItems: 'flex-start',
-      gap: 10,
-      marginBottom: 16,
+      background: '#FEF2F2', border: '1.5px solid #FCA5A5',
+      borderRadius: 10, padding: '12px 16px',
+      display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 16,
     }}>
       <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
       <div>
@@ -175,15 +173,15 @@ function CoeffErrorBanner({ coeffSum, activeCount }) {
 
 export default function RuleConfigurationPage() {
   const { strategyId } = useParams();
-  const navigate = useNavigate();
-  const location = useLocation();
+  const navigate       = useNavigate();
+  const location       = useLocation();
 
-  const isNewCustom        = location.state?.is_new_custom === true;
-  const customMeta         = location.state?.custom_meta;
+  const isNewCustom          = location.state?.is_new_custom === true;
+  const customMeta           = location.state?.custom_meta;
   const customRulesFromState = location.state?.custom_rules || [];
-  const scope              = location.state?.scope;
-
-  const isSystemStrategy   = !!location.state?.system_strategy_id && !isNewCustom;
+  const scope                = location.state?.scope;
+  const isSystemStrategy     = !!location.state?.system_strategy_id && !isNewCustom;
+  const llmRules             = location.state?.llm_rules || [];
 
   const [strategy,               setStrategy]             = useState(null);
   const [local,                  setLocal]                = useState({});
@@ -198,45 +196,68 @@ export default function RuleConfigurationPage() {
         let sRes;
 
         if (isNewCustom) {
-          // Charger les noms des règles depuis l'API pour éviter d'afficher les IDs
-          // Les noms sont déjà inclus dans customRulesFromState depuis StrategyConfigurationPage
-          const rulesWithNames = customRulesFromState.map((r) => ({
+          // ── Nouvelle stratégie custom (depuis LLM ou sélection manuelle) ──
+          const rulesWithNames = customRulesFromState.map((r, idx) => ({
             ...r,
-            id:          r.rule_id,
-            name:        r.name        || r.rule_id,
+            id:          r.rule_id || r.custom_rule_code || `llm_custom_${idx}`,
+            name:        r.name        || r.rule_name || r.rule_id || `Rule ${idx + 1}`,
             description: r.description || '',
             active:      r.active      ?? true,
             params:      r.params      || {},
           }));
           sRes = {
-            id: 'new-custom',
-            name: customMeta?.name || 'My Custom Strategy',
+            id:          'new-custom',
+            name:        customMeta?.name || 'My Custom Strategy',
             description: customMeta?.description || '',
-            rules: rulesWithNames,
+            rules:       rulesWithNames,
           };
+
         } else if (isSystemStrategy) {
+          // ── Stratégie système — charger depuis DB puis merger rules LLM extra ──
           sRes = await getStrategy(strategyId);
+
+          if (llmRules.length > 0) {
+            const sysRuleIds = new Set((sRes.rules || []).map((r) => r.rule_id || r.id));
+            const extraLlmRules = llmRules
+              .filter((lr) => lr.rule_id && !sysRuleIds.has(lr.rule_id))
+              .map((lr, idx) => ({
+                rule_id:     lr.rule_id,
+                id:          lr.rule_id,
+                name:        lr.rule_name || lr.rule_id,
+                description: '',
+                active:      true,
+                coefficient: lr.coefficient,
+                params:      lr.params || {},
+              }));
+            if (extraLlmRules.length > 0) {
+              sRes = { ...sRes, rules: [...(sRes.rules || []), ...extraLlmRules] };
+            }
+          }
+
         } else {
+          // ── Stratégie user existante ──
           sRes = await getUserStrategy(strategyId);
         }
 
         setStrategy(sRes);
 
+        // ── Construire l'état local des paramètres de chaque rule ──
         const initial = {};
         (sRes.rules || []).forEach((r) => {
-          const key = r.rule_id || r.id;
-          const params = r.params || {};
+          const key       = r.rule_id || r.id;
+          const params    = r.params  || {};
+          const llmRule   = llmRules.find((lr) => lr.rule_id === key);
+          const llmParams = llmRule?.params || {};
+
           initial[key] = {
-            coefficient:         parseFloat(r.coefficient ?? 0),
-            aggregationFunction: params.aggregation_function ?? 'median',
-            discountPct:         params.discount_pct         ?? 3,
-            lowThresholdPct:     params.low_threshold_pct    ?? 1,
-            highThresholdPct:    params.high_threshold_pct   ?? 15,
+            coefficient:         llmRule?.coefficient ?? parseFloat(r.coefficient ?? 0),
+            aggregationFunction: getParamValue(llmParams.aggregation_function, params.aggregation_function, 'median'),
+            discountPct:         getParamValue(llmParams.discount_pct,         params.discount_pct,         3),
+            lowThresholdPct:     getParamValue(llmParams.low_threshold_pct,    params.low_threshold_pct,    1),
+            highThresholdPct:    getParamValue(llmParams.high_threshold_pct,   params.high_threshold_pct,   15),
             isActive:            r.active !== false,
-            // Rule name: prefer r.name (system rule), then r.rule?.name (nested),
-            // then r.rule_name, fallback to key so we never show a raw ID
-            name:        r.name || r.rule?.name || r.rule_name || key,
-            description: r.description || r.rule?.description || '',
+            name:                r.name || r.rule?.name || r.rule_name || key,
+            description:         r.description || r.rule?.description || '',
           };
         });
 
@@ -260,19 +281,17 @@ export default function RuleConfigurationPage() {
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
-  const change       = (key, field, value) =>
+  const change = (key, field, value) =>
     setLocal(prev => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
 
   const toggleActive = (key) =>
     setLocal(prev => ({ ...prev, [key]: { ...prev[key], isActive: !prev[key].isActive } }));
 
-  // Called after the modal successfully persists the rule in the DB
   const handleAddNewRule = (newRule) => {
     setStrategy(prev => ({
       ...prev,
       rules: [...(prev?.rules || []), newRule],
     }));
-
     setLocal(prev => ({
       ...prev,
       [newRule.rule_id]: {
@@ -306,10 +325,8 @@ export default function RuleConfigurationPage() {
     setError(null);
 
     try {
-      // ── Step 1: persist new custom rules created in this session ──────────
-      // Rules with a temp ID (prefix "custom_") are new user-created rules
-      // that haven't been saved to the DB yet. Persist them now.
-      const tempIdMap = {}; // tempId → real DB id
+      // ── Step 1 : persister les nouvelles custom rules (temp ID) ──────────
+      const tempIdMap = {};
       for (const rule of strategyRules) {
         const key = rule.key;
         if (String(key).startsWith('custom_')) {
@@ -322,19 +339,19 @@ export default function RuleConfigurationPage() {
             tempIdMap[key] = created.id;
           } catch (e) {
             console.warn('Failed to persist custom rule:', e.message);
-            tempIdMap[key] = key; // fallback: keep temp id
+            tempIdMap[key] = key;
           }
         }
       }
 
-      // Resolve rule keys (replace temp IDs with real ones)
       const resolveKey = (key) => tempIdMap[key] || key;
 
-      // ── Step 2: update existing rules' parameters (non-blocking) ─────────
+      // ── Step 2 : mettre à jour les params des rules existantes ────────────
       for (const rule of strategyRules) {
         const key = rule.key;
-        if (String(key).startsWith('custom_')) continue; // just created, skip
+        if (String(key).startsWith('custom_') || tempIdMap[key]) continue;
         const l = local[key];
+        if (!l) continue;
         const params = {};
         if (l.aggregationFunction !== undefined) params.aggregation_function = l.aggregationFunction;
         if (l.discountPct         !== undefined) params.discount_pct         = Number(l.discountPct);
@@ -343,11 +360,10 @@ export default function RuleConfigurationPage() {
         try { await updateRule(key, params); } catch { /* non-blocking */ }
       }
 
-      // ── Step 3: persist UserStrategy ─────────────────────────────────────
+      // ── Step 3 : persister UserStrategy ──────────────────────────────────
       let userStrategyId = null;
 
       if (isNewCustom) {
-        // New custom strategy → create it with is_custom: true
         const created = await createUserStrategy({
           name:        customMeta?.name        || strategy.name,
           description: customMeta?.description || '',
@@ -359,20 +375,7 @@ export default function RuleConfigurationPage() {
         });
         userStrategyId = created.id;
 
-      } else if (!isSystemStrategy) {
-        // Existing user strategy → update coefficients
-        await updateUserStrategy(strategyId, {
-          name:  strategy.name,
-          rules: strategyRules.map((r) => ({
-            rule_id:     resolveKey(r.key),
-            coefficient: parseFloat(local[r.key]?.coefficient ?? 0),
-          })),
-        });
-        userStrategyId = strategyId;
-
-      } else {
-        // System strategy: record it as a UserStrategy with is_custom: false
-        // so we can track which user ran which preset strategy
+      } else if (isSystemStrategy) {
         try {
           const created = await createUserStrategy({
             name:             strategy.name,
@@ -385,11 +388,20 @@ export default function RuleConfigurationPage() {
             })),
           });
           userStrategyId = created.id;
-        } catch { /* non-blocking — job can proceed without it */ }
+        } catch { /* non-blocking */ }
+
+      } else {
+        await updateUserStrategy(strategyId, {
+          name:  strategy.name,
+          rules: strategyRules.map((r) => ({
+            rule_id:     resolveKey(r.key),
+            coefficient: parseFloat(local[r.key]?.coefficient ?? 0),
+          })),
+        });
+        userStrategyId = strategyId;
       }
 
-      // ── Step 4: create pricing job ───────────────────────────────────────
-      // Map scope to backend JobCreate schema (singular fields)
+      // ── Step 4 : créer le job de pricing ─────────────────────────────────
       const jobPayload = {
         strategy_name:      strategy?.name || 'STRATEGY',
         user_strategy_id:   userStrategyId,
@@ -433,16 +445,12 @@ export default function RuleConfigurationPage() {
         </Button>
 
         <div style={{ display: 'flex', gap: 10 }}>
-          {/* Add New Rule is ALWAYS enabled — sum validation happens at Apply */}
           <Button variant="secondary" onClick={() => setShowNewCustomRuleModal(true)}>
             + Add New Rule
           </Button>
-
           <Button variant="danger" onClick={handleDiscardStrategy}>
             Discard Strategy
           </Button>
-
-          {/* Apply Changes is frozen until coefficients are valid */}
           <Button
             variant="primary"
             loading={saving}
@@ -459,10 +467,8 @@ export default function RuleConfigurationPage() {
         </div>
       </div>
 
-      {/* ── API / misc errors ── */}
       {error && <Alert variant="danger" style={{ marginBottom: 20 }}>{error}</Alert>}
 
-      {/* ── Coefficient error banner (shown whenever sum ≠ 1 and there are active rules) ── */}
       {!coeffValid && activeRules.length > 0 && (
         <CoeffErrorBanner coeffSum={coeffSum} activeCount={activeRules.length} />
       )}
@@ -476,7 +482,7 @@ export default function RuleConfigurationPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 28 }}>
         {strategyRules.map((rule, idx) => (
           <RuleCard
-            key={rule.key || idx}
+            key={rule.key || rule.id || idx}
             rule={rule}
             localRule={local[rule.key]}
             active={local[rule.key]?.isActive !== false}
@@ -487,14 +493,12 @@ export default function RuleConfigurationPage() {
         ))}
       </div>
 
-      {/* ── Bottom coefficient reminder ── */}
       {!coeffValid && activeRules.length > 0 && (
         <div style={{ fontSize: 13, color: '#dc2626', fontWeight: 600, textAlign: 'right' }}>
           ⚠️ Coefficients must sum to 1.0 — current: {coeffSum.toFixed(3)}
         </div>
       )}
 
-      {/* ── Modal ── */}
       {showNewCustomRuleModal && (
         <NewCustomRuleModal
           onClose={() => setShowNewCustomRuleModal(false)}

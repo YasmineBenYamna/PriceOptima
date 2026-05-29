@@ -19,6 +19,7 @@ from services.rule_helpers import (
     clamp_existing_rule_params,
     extract_json_object,
     find_rule,
+    inject_default_params,
     map_llm_rule_to_schema,
     normalize_rule_coefficients,
     to_list,
@@ -33,9 +34,9 @@ class LLMService(CatalogMixin):
     """
     # ── Modèles Groq par ordre de préférence ──────────────────────────────────
     DEFAULT_MODELS = [
-    "llama-3.3-70b-versatile",  # principal
-    "llama-3.1-8b-instant",     # secours
-]
+        "llama-3.3-70b-versatile",  # principal
+        "llama-3.1-8b-instant",      # temporaire — quota 70b épuisé
+    ]
 
     # ── IDs / noms stratégie CUSTOM ───────────────────────────────────────────
     CUSTOM_STRATEGY_ID   = "s4"
@@ -50,6 +51,11 @@ class LLMService(CatalogMixin):
     # ── Caps sur le coefficient r3 selon nb_concurrents ──────────────────────
     MAX_R3_NO_COMPETITORS  = 0.20
     MAX_R3_LOW_COMPETITORS = 0.35
+
+    _DM_JOINS = """
+        LEFT JOIN silver.category c ON c.category_id = dp.category_id
+        LEFT JOIN silver.brand    b ON b.brand_id    = dp.brand_id
+    """
 
     # ────────────────────────────Init─────────────────────────────────────────
     def __init__(
@@ -102,7 +108,7 @@ class LLMService(CatalogMixin):
         if not magasin_id:
             raise HTTPException(status_code=400, detail="Store not found.")
 
-        date_id = self._get_latest_date_id()
+        date_id = self._get_latest_date_id(magasin_id=magasin_id, categories=categories, brands=brands)
         if not date_id:
             raise HTTPException(status_code=503, detail="No pricing data available.")
 
@@ -134,21 +140,32 @@ class LLMService(CatalogMixin):
             result = conn.execute(text(sql), params)
             return [dict(row._mapping) for row in result]
 
-    def _get_latest_date_id(self) -> Optional[int]:
-        rows = self._query(
-            "SELECT MAX(date_id) AS max_date FROM gold.dm_pricing_performance", {}
-        )
-        if rows and rows[0].get("max_date"):
-            return rows[0]["max_date"]
-        return None
-
-    def _get_own_metrics(
+    def _get_latest_date_id(
         self,
-        magasin_id: str,
-        categories: Optional[List[str]],
-        brands: Optional[List[str]],
-        date_id: Optional[int],
-    ) -> dict:
+        magasin_id: Optional[str] = None,
+        categories: Optional[List[str]] = None,
+        brands: Optional[List[str]] = None,
+    ) -> Optional[int]:
+        if not magasin_id:
+            return None
+        rows = self._query("""
+            SELECT MAX(dp.date_id) AS max_date
+            FROM gold.dm_pricing_performance dp
+            WHERE dp.magasin_id = :magasin_id
+        """, {"magasin_id": magasin_id})
+        return rows[0].get("max_date") if rows else None
+
+    def _get_own_metrics(self, magasin_id, categories, brands, date_id):
+        result = self._query_own_metrics(magasin_id, categories, brands, date_id)
+        logger.info("_get_own_metrics with date_id=%s categories=%s brands=%s → %s",
+                    date_id, categories, brands, result)
+        if result:
+            return result
+        result = self._query_own_metrics(magasin_id, categories, brands, date_id=None)
+        logger.info("_get_own_metrics WITHOUT date_id → %s", result)
+        return result
+
+    def _query_own_metrics(self, magasin_id, categories, brands, date_id):
         params  = {"magasin_id": magasin_id}
         filters = "WHERE dp.magasin_id = :magasin_id"
 
@@ -160,74 +177,50 @@ class LLMService(CatalogMixin):
         if brands:
             filters += " " + build_ilike_filter("b.brand_name", brands, params, "brd")
 
-        ipp_cat_sel   = "ROUND(AVG(dp.ipp_category)::NUMERIC, 2) AS ipp_category" if categories else "NULL AS ipp_category"
-        ipp_brand_sel = "ROUND(AVG(dp.ipp_brand)::NUMERIC, 2) AS ipp_brand"       if brands     else "NULL AS ipp_brand"
+        ipp_cat   = "ROUND(AVG(dp.ipp_category)::NUMERIC, 2) AS ipp_category" if categories else "NULL AS ipp_category"
+        ipp_brand = "ROUND(AVG(dp.ipp_brand)::NUMERIC, 2) AS ipp_brand"       if brands     else "NULL AS ipp_brand"
 
-        rows = self._query(
-        f"""
-        SELECT
-            ROUND(AVG(dp.avg_price_eur)::NUMERIC, 4)              AS avg_price_eur,
-            ROUND(AVG(dp.ipp_global)::NUMERIC, 2)                 AS ipp_global,
-            {ipp_cat_sel},
-            {ipp_brand_sel},
-            ROUND(AVG(dp.price_evolution_pct_mom)::NUMERIC, 2)    AS price_evolution_mom,
-            ROUND(AVG(dp.indice_saisonnier_category)::NUMERIC, 2) AS indice_saisonnier_category,
-            ROUND(AVG(mp.taux_promo_global)::NUMERIC, 2)          AS taux_promo_global,
-            ROUND(AVG(mp.rang_category)::NUMERIC, 1)              AS rang_category,
-            SUM(dp.nb_prices)                                     AS nb_prices
-        FROM gold.dm_pricing_performance dp
-        LEFT JOIN gold.dm_market_positioning mp
-            ON mp.magasin_id  = dp.magasin_id
-            AND mp.category_id = dp.category_id
-            AND mp.brand_id    = dp.brand_id
-            AND mp.date_id     = dp.date_id
-        LEFT JOIN silver.category c ON c.category_id = dp.category_id
-        LEFT JOIN silver.brand    b ON b.brand_id    = dp.brand_id
-        {filters}
-        """,
-        params,
-        )
+        rows = self._query(f"""
+            SELECT
+                ROUND(AVG(dp.avg_price_eur)::NUMERIC, 4)              AS avg_price_eur,
+                ROUND(AVG(dp.ipp_global)::NUMERIC, 2)                 AS ipp_global,
+                {ipp_cat},
+                {ipp_brand},
+                ROUND(AVG(dp.price_evolution_pct_mom)::NUMERIC, 2)    AS price_evolution_mom,
+                ROUND(AVG(dp.indice_saisonnier_category)::NUMERIC, 2) AS indice_saisonnier_category,
+                SUM(dp.nb_prices)                                     AS nb_prices
+            FROM gold.dm_pricing_performance dp
+            {self._DM_JOINS}
+            {filters}
+        """, params)
+
         return rows[0] if rows and rows[0].get("avg_price_eur") is not None else {}
-    def _get_market_metrics(
-        self,
-        magasin_id: str,
-        categories: Optional[List[str]],
-        brands: Optional[List[str]],
-        date_id: Optional[int],
-    ) -> dict:
-        """
-        Lit les métriques concurrentielles depuis dm_market_positioning
-        (concurrents = tous les magasin_id != magasin connecté, même périmètre catégorie/marque).
-        """
+
+    def _get_market_metrics(self, magasin_id, categories, brands, date_id):
         params  = {"magasin_id": magasin_id}
-        filters = "WHERE mp.magasin_id != :magasin_id AND mp.avg_price_eur IS NOT NULL"
+        filters = "WHERE dp.magasin_id != :magasin_id AND dp.avg_price_eur IS NOT NULL"
 
         if date_id:
-            filters += " AND mp.date_id = :date_id"
+            filters += " AND dp.date_id = :date_id"
             params["date_id"] = date_id
         if categories:
             filters += " " + build_ilike_filter("c.category_name", categories, params, "cat")
         if brands:
             filters += " " + build_ilike_filter("b.brand_name", brands, params, "brd")
 
-        rows = self._query(
-            f"""
+        rows = self._query(f"""
             SELECT
-                ROUND(AVG(mp.avg_price_eur)::NUMERIC, 4)                       AS market_avg_price_eur,
-                ROUND(AVG(mp.indice_saisonnier_marche_cat)::NUMERIC, 2)        AS market_indice_saisonnier_cat,
-                ROUND(AVG(mp.taux_promo_global)::NUMERIC, 2)                   AS market_taux_promo_global,
-                ROUND(AVG(mp.taux_promo_category)::NUMERIC, 2)                 AS market_taux_promo_category,
-                ROUND(AVG(mp.rang_category)::NUMERIC, 1)                       AS market_avg_rang_category,
-                COUNT(DISTINCT mp.magasin_id)                                  AS nb_concurrents
-            FROM gold.dm_market_positioning mp
-            LEFT JOIN silver.category c ON c.category_id = mp.category_id
-            LEFT JOIN silver.brand    b ON b.brand_id    = mp.brand_id
+                ROUND(AVG(dp.avg_price_eur)::NUMERIC, 4)              AS market_avg_price_eur,
+                ROUND(AVG(dp.ipp_category)::NUMERIC, 2)               AS market_ipp_category,
+                ROUND(AVG(dp.price_evolution_pct_mom)::NUMERIC, 2)    AS market_price_evolution_mom,
+                COUNT(DISTINCT dp.magasin_id)                         AS nb_concurrents
+            FROM gold.dm_pricing_performance dp
+            {self._DM_JOINS}
             {filters}
-            """,
-            params,
-        )
+        """, params)
+
         return rows[0] if rows else {}
-    
+
     def _get_network_info(self, magasin_id: str) -> dict:
         rows = self._query(
             """
@@ -242,20 +235,16 @@ class LLMService(CatalogMixin):
         return rows[0] if rows else {}
 
     def _sanity_check(self, own: dict, market: dict) -> None:
-        market_avg = market.get("market_avg_price_eur")
-        own_avg    = own.get("avg_price_eur")
+        market_avg     = market.get("market_avg_price_eur")
+        own_avg        = own.get("avg_price_eur")
+        nb_concurrents = int(market.get("nb_concurrents") or 0)
 
-        if market_avg and float(market_avg) > 1000:
-            raise HTTPException(
-                status_code=422,
-                detail="Abnormal market data detected. Please check the pipeline.",
-            )
-        if own_avg and market_avg:
+        if own_avg and market_avg and nb_concurrents >= 2:
             ratio = float(own_avg) / float(market_avg)
             if ratio > 10 or ratio < 0.1:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Inconsistent store/market price ratio (ratio={ratio:.2f}).",
+                    detail="Données insuffisantes pour générer une suggestion sur ce périmètre. Essayez une autre catégorie ou marque."
                 )
 
     # ────────────────────────────Groq — appel avec fallback multi-modèles────────────────────────────────────────────────────
@@ -275,8 +264,9 @@ class LLMService(CatalogMixin):
                             "role": "system",
                             "content": (
                                 "You are a senior retail pricing strategy expert. "
-                                "Respond ONLY with valid JSON in English, "
-                                "without markdown and without extra text."
+                                "Respond ONLY with valid JSON in English, without markdown and without extra text. "
+                                "CRITICAL: The strategy name in 'explanation' MUST match exactly 'recommended_strategy_name'. "
+                                "Never mention a different strategy name in any text field."
                             ),
                         },
                         {"role": "user", "content": prompt},
@@ -332,6 +322,9 @@ class LLMService(CatalogMixin):
     # ────────────────────────────Parsing & validation─────────────────────────────────────────────────
 
     def _parse_and_validate_llm_output(self, result: dict) -> LLMSuggestResponse:
+        logger.info("RULES_CATALOG params: %s", {
+            rid: rdef.get("params") for rid, rdef in self.RULES_CATALOG.items()
+        })
         try:
             mapped_rules = [map_llm_rule_to_schema(r) for r in result.get("rules", [])]
             mapped_rules = normalize_rule_coefficients(mapped_rules)
@@ -348,9 +341,15 @@ class LLMService(CatalogMixin):
                         )
                     existing_rule_ids.append(rule.rule_id)
                     clamp_existing_rule_params(rule, self.RULES_CATALOG)
+                    inject_default_params(rule, self.RULES_CATALOG)
 
             strategy_id, strategy_name, is_custom = self._resolve_strategy(
                 result, has_custom_rule, existing_rule_ids
+            )
+
+            # Fix explanation si le LLM a mentionné un mauvais nom de stratégie
+            explanation = self._fix_explanation_text(
+                result.get("explanation") or "", strategy_name
             )
 
             payload = {
@@ -360,7 +359,7 @@ class LLMService(CatalogMixin):
                 "confidence_score":          result.get("confidence_score"),
                 "rules":                     [r.model_dump() for r in mapped_rules],
                 "reasoning":                 result.get("reasoning") or {},
-                "explanation":               result.get("explanation") or "",
+                "explanation":               explanation,
                 "context_used":              result.get("context_used") or {},
             }
             return LLMSuggestResponse.model_validate(payload)
@@ -392,6 +391,25 @@ class LLMService(CatalogMixin):
         # Combinaison de rule_ids inconnue → CUSTOM légitime
         return self.CUSTOM_STRATEGY_ID, self.CUSTOM_STRATEGY_NAME, True
 
+    def _fix_explanation_text(self, explanation: str, correct_strategy_name: str) -> str:
+        """
+        Remplace tout nom de stratégie incorrect dans l'explication par le nom correct.
+        Couvre les stratégies système + CUSTOM.
+        """
+        all_names = (
+            [s["name"] for s in self.STRATEGIES_CATALOG.values()]
+            + [self.CUSTOM_STRATEGY_NAME]
+        )
+        for wrong_name in all_names:
+            if wrong_name != correct_strategy_name and wrong_name in explanation:
+                logger.warning(
+                    "LLM explanation mentions wrong strategy '%s' instead of '%s'. Auto-correcting.",
+                    wrong_name,
+                    correct_strategy_name,
+                )
+                explanation = explanation.replace(wrong_name, correct_strategy_name)
+        return explanation
+
     def _rebuild_response_with_context(
         self,
         parsed: LLMSuggestResponse,
@@ -406,23 +424,23 @@ class LLMService(CatalogMixin):
     ) -> LLMSuggestResponse:
         payload = parsed.model_dump()
         payload["context_used"] = {
-    "company_name":                company_name,
-    "magasin_id":                  magasin_id,
-    "date_id":                     date_id,
-    "categories":                  categories,
-    "brands":                      brands,
-    "own_avg_price_eur":           own.get("avg_price_eur"),
-    "market_avg_price_eur":        market.get("market_avg_price_eur"),
-    "price_gap_pct":               get_price_gap_pct(own, market),
-    "own_ipp_category":            own.get("ipp_category"),
-    "own_ipp_brand":               own.get("ipp_brand"),
-    "price_evolution_mom":         own.get("price_evolution_mom"),
-    "nb_concurrents":              market.get("nb_concurrents"),
-    "network_tier":                network.get("network_tier"),
-    "market_taux_promo_global":    market.get("market_taux_promo_global"),
-    "market_taux_promo_category":  market.get("market_taux_promo_category"),
-    "market_avg_rang_category":    market.get("market_avg_rang_category"),
-    }
+            "company_name":                company_name,
+            "magasin_id":                  magasin_id,
+            "date_id":                     date_id,
+            "categories":                  categories,
+            "brands":                      brands,
+            "own_avg_price_eur":           own.get("avg_price_eur"),
+            "market_avg_price_eur":        market.get("market_avg_price_eur"),
+            "price_gap_pct":               get_price_gap_pct(own, market),
+            "own_ipp_category":            own.get("ipp_category"),
+            "own_ipp_brand":               own.get("ipp_brand"),
+            "price_evolution_mom":         own.get("price_evolution_mom"),
+            "nb_concurrents":              market.get("nb_concurrents"),
+            "network_tier":                network.get("network_tier"),
+            "market_taux_promo_global":    market.get("market_taux_promo_global"),
+            "market_taux_promo_category":  market.get("market_taux_promo_category"),
+            "market_avg_rang_category":    market.get("market_avg_rang_category"),
+        }
         return LLMSuggestResponse.model_validate(payload)
 
     # ────────────────────────────Business guards — post-LLM─────────────────────────────────────────────────
@@ -441,6 +459,9 @@ class LLMService(CatalogMixin):
         2. Store > +15% marché → MARKET_ALIGNED forcé (s3)
         3. Store < -15% marché + ≥3 concurrents → AGGRESSIVE forcé (s1)
         4. 1-2 concurrents → cap du coefficient r3
+
+        Après chaque override de stratégie, l'explication est réécrite
+        pour refléter le contexte réel (évite le mismatch titre/texte).
         """
         rules          = parsed.rules[:]
         nb_concurrents = int(market.get("nb_concurrents") or 0)
@@ -453,6 +474,12 @@ class LLMService(CatalogMixin):
             parsed.recommended_strategy_id   = self.CUSTOM_STRATEGY_ID
             parsed.recommended_strategy_name = self.CUSTOM_STRATEGY_NAME
             parsed.is_custom = True
+            parsed.explanation = (
+                "A CUSTOM protection-oriented strategy has been applied: "
+                "no active competitors are present in this scope. "
+                "The recommendation focuses on internal price floor protection "
+                "and price stability rather than competitive repositioning."
+            )
             parsed.reasoning["strategy_choice"] = (
                 "Custom protection-oriented strategy applied: no active competitors in scope."
             )
@@ -464,6 +491,12 @@ class LLMService(CatalogMixin):
             parsed.recommended_strategy_id   = "s3"
             parsed.recommended_strategy_name = "MARKET_ALIGNED"
             parsed.is_custom = False
+            parsed.explanation = (
+                f"A MARKET_ALIGNED strategy has been enforced: the store is "
+                f"+{price_gap_pct:.1f}% above the market average price. "
+                "The objective is to progressively reduce the price gap "
+                "with the market by anchoring to the market average."
+            )
             parsed.reasoning["strategy_choice"] = (
                 f"Market-aligned strategy enforced: store is +{price_gap_pct:.1f}% above market."
             )
@@ -479,6 +512,13 @@ class LLMService(CatalogMixin):
             parsed.recommended_strategy_id   = "s1"
             parsed.recommended_strategy_name = "AGGRESSIVE"
             parsed.is_custom = False
+            parsed.explanation = (
+                f"An AGGRESSIVE strategy has been enforced: the store is "
+                f"{abs(price_gap_pct):.1f}% below the market average price "
+                f"with {nb_concurrents} active competitors. "
+                "This strategy prioritises competitive price beating "
+                "to recover market positioning."
+            )
             parsed.reasoning["strategy_choice"] = (
                 f"Aggressive strategy enforced: store is {price_gap_pct:.1f}% below market "
                 f"with {nb_concurrents} active competitors."
@@ -491,13 +531,11 @@ class LLMService(CatalogMixin):
             if r3 and float(r3.coefficient) > self.MAX_R3_LOW_COMPETITORS:
                 r3.coefficient = self.MAX_R3_LOW_COMPETITORS
 
-        # ── Synchronisation explanation ───────────────────────────────────────
-        if strategy_overridden:
-            parsed.explanation = (
-                f"[Adjusted by business rules] "
-                f"{parsed.reasoning.get('strategy_choice', '')} "
-                f"Original LLM explanation: {parsed.explanation}"
-            ).strip()
+        # ── Si pas d'override, corriger quand même l'explication au cas où ───
+        if not strategy_overridden:
+            parsed.explanation = self._fix_explanation_text(
+                parsed.explanation or "", parsed.recommended_strategy_name
+            )
 
         rules = normalize_rule_coefficients(rules)
 
@@ -511,10 +549,10 @@ class LLMService(CatalogMixin):
 
     def _guard_no_competitors(self, rules: List[RuleInStrategy]) -> List[RuleInStrategy]:
         """Applique les ajustements de protection quand nb_concurrents = 0."""
-        
+
         # Retirer competitor_beat_rule (r3) : sans concurrents, elle n'a pas de sens
         rules = [r for r in rules if r.rule_id != "r3"]
-        
+
         r2_name = self.RULES_CATALOG.get("r2", {}).get("name", "floor_price_rule")
         r6_name = self.RULES_CATALOG.get("r6", {}).get("name", "stability_rule")
 
@@ -533,17 +571,25 @@ class LLMService(CatalogMixin):
         return rules
 
     def _get_system_rules_for_strategy(self, strategy_id: str) -> List[RuleInStrategy]:
-        """Retourne les règles système d'une stratégie sous forme de RuleInStrategy."""
         strategy = self.STRATEGIES_CATALOG.get(strategy_id)
         if not strategy:
             return []
-        return [
-            RuleInStrategy(
-                rule_id=r["rule_id"],
-                rule_name=self.RULES_CATALOG.get(r["rule_id"], {}).get("name", r["rule_id"]),
+        rules = []
+        for r in strategy["default_rules"]:
+            rid = r["rule_id"]
+            catalog_entry = self.RULES_CATALOG.get(rid, {})
+
+            # Construire les params par défaut
+            default_params = {}
+            for pname, pdef in (catalog_entry.get("params") or {}).items():
+                if isinstance(pdef, dict) and "default" in pdef:
+                    default_params[pname] = pdef["default"]
+
+            rules.append(RuleInStrategy(
+                rule_id=rid,
+                rule_name=catalog_entry.get("name", rid),
                 coefficient=float(r["coefficient"]),
-                params={},
+                params=default_params,
                 is_new=False,
-            )
-            for r in strategy["default_rules"]
-        ]
+            ))
+        return rules

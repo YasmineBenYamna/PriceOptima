@@ -10,8 +10,8 @@ class PriceResult(Base):
 
     __tablename__ = "price_results"
 
-    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    job_id         = Column(UUID(as_uuid=True), ForeignKey("jobs.id"),   nullable=False)
+    id             = Column(String,   primary_key=True, default=lambda: str(uuid.uuid4()))  # ← String
+    job_id         = Column(String,   ForeignKey("jobs.id"),  nullable=False)                # ← String
     user_id        = Column(String,             ForeignKey("users.id"),  nullable=False)
     strategy_name  = Column(String,             nullable=False)
     scope_type     = Column(String,             nullable=True)   # 'ean', 'category', 'brand'

@@ -58,35 +58,44 @@ with DAG(
     )
 
     t4 = BashOperator(
-        task_id="run_sqlmesh_transformation",
-        bash_command="""
-        set -euo pipefail
-        cd /opt/airflow/sqlmesh
+    task_id="run_sqlmesh_transformation",
+    bash_command="""
+            set -euo pipefail
+            cd /opt/airflow/sqlmesh
 
-        echo "[1/3] Sync exchange rates..."
-        sqlmesh run prod --ignore-cron \
-            --select-model 'bronze.exchange_rates_raw'
+            EXEC_DATE="{{ ds }}"
+            PREV_DATE="{{ macros.ds_add(ds, -1) }}"
 
-        echo "[2/3] Run incremental models..."
-        sqlmesh run prod --ignore-cron \
-            --select-model 'bronze.prices_raw' \
-            --select-model 'silver.prices' \
-            --select-model 'silver.prices_errors'
+            echo "Window: ${PREV_DATE} → ${EXEC_DATE}"
 
-        echo "[3/3] Run FULL + weekly models..."
-        sqlmesh run prod \
-            --select-model 'silver.store' \
-            --select-model 'silver.magasin' \
-            --select-model 'silver.temps' \
-            --select-model 'silver.prices_recovery' \
-            --select-model 'silver.brand' \
-            --select-model 'silver.category' \
-            --select-model 'silver.product_category' \
-            --select-model 'silver.products' \
-            --select-model 'bronze.products_raw' \
-            --select-model 'gold.dm_store_network' \
-            --select-model 'gold.dm_pricing_performance' \
-            --select-model 'gold.dm_market_positioning'
+            echo "[1/4] Restate prices [${PREV_DATE} → ${EXEC_DATE}]..."
+            sqlmesh plan prod --no-prompts --auto-apply \
+                --restate-model 'bronze.prices_raw' \
+                --restate-model 'silver.prices' \
+                --restate-model 'silver.prices_errors' \
+                --start "$PREV_DATE" --end "$EXEC_DATE"
+
+            echo "[2/4] Upsert exchange rates..."
+            sqlmesh plan prod --no-prompts --auto-apply \
+                --restate-model 'bronze.exchange_rates_raw'
+
+            echo "[3/4] Upsert referentiels produits/stores..."
+            sqlmesh plan prod --no-prompts --auto-apply \
+                --restate-model 'bronze.products_raw' \
+                --restate-model 'silver.brand' \
+                --restate-model 'silver.category' \
+                --restate-model 'silver.product_category' \
+                --restate-model 'silver.products' \
+                --restate-model 'silver.store' \
+                --restate-model 'silver.magasin'
+
+            echo "[4/4] Refresh gold + transversal..."
+            sqlmesh plan prod --no-prompts --auto-apply \
+                --restate-model 'silver.temps' \
+                --restate-model 'silver.prices_recovery' \
+                --restate-model 'gold.dm_store_network' \
+                --restate-model 'gold.dm_pricing_performance' \
+                --restate-model 'gold.dm_market_positioning'
         """,
         execution_timeout=timedelta(hours=2),
         retries=1,

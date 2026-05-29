@@ -5,31 +5,25 @@ import uuid
 import logging
 from pathlib import Path
 import duckdb
-import pyarrow.parquet as pq
 import io
 import zipfile
 import requests
 import pandas as pd
 from datetime import date, timedelta
 from psycopg2.extras import execute_values
-
 from dag_seed import SCHEMA_CONFIG_PATH
+
 from utils.common import (
     get_db_connection,
     DB_CONFIG,
 )
 logger = logging.getLogger(__name__)
 
-DATA_PATH      = "/opt/airflow/data"
-
 # ── chargement config externe ─────────────────────────────
 with open(SCHEMA_CONFIG_PATH) as f:
     _cfg = json.load(f)
 
-_currency_cfg      = _cfg["currency_config"]
-TARGET_CURRENCIES  = set(_currency_cfg["target_currencies"])
-DATE_MIN_CURRENCY  = date.fromisoformat(_currency_cfg["date_min"])
-CURRENCY_PAGE_SIZE = _currency_cfg["page_size"]
+DATA_PATH      = "/opt/airflow/data"
 
 _sources    = _cfg["sources"]
 URL_PRICES  = _sources["prices"]
@@ -40,10 +34,15 @@ ECB_ZIP_URL = _sources["ecb"]
 IMF_CSV_URL = _sources["imf"]
 
 _file_names         = _cfg.get("file_names", {})
-PARQUET_PATH_PRICES = f"{DATA_PATH}/{_file_names.get('prices', 'prices.parquet')}"
+PARQUET_PATH_PRICES = f"{DATA_PATH}/{_file_names.get('prices', 'prices.parquet')}" # , 'prices.parquet' cad par defaut si il ne trouve pas dans schema.config
 PARQUET_PATH_FOOD   = f"{DATA_PATH}/{_file_names.get('food',   'food.parquet')}"
 JSONL_PATH_BEAUTY   = f"{DATA_PATH}/{_file_names.get('beauty', 'beauty.jsonl')}"
 JSONL_PATH_OTHER    = f"{DATA_PATH}/{_file_names.get('other',  'other.jsonl')}"
+
+_currency_cfg      = _cfg["currency_config"]
+TARGET_CURRENCIES  = set(_currency_cfg["target_currencies"])
+DATE_MIN_CURRENCY  = date.fromisoformat(_currency_cfg["date_min"])  # qui convertit une string ISO 8601 en objet datetime
+CURRENCY_PAGE_SIZE = _currency_cfg["page_size"]
 
 # cast types — prices
 _prices_cast        = _cfg["prices_raw"]["cast_types"]
@@ -70,36 +69,37 @@ PRODUCTS_TECHNICAL_COLS = set(_cfg["products_raw"]["technical_columns"])
 
 # DUCKDB — helpers
 
-def _pg_password() -> str:
-    """Résout le mot de passe PostgreSQL depuis DB_CONFIG ou les variables d'environnement.
-    Priorité : DB_CONFIG dict → POSTGRES_PASSWORD → AIRFLOW__DATABASE__PASSWORD → fallback 'admin123'.
-    Returns:
-        str: Le mot de passe PostgreSQL résolu."""
-
-    if isinstance(DB_CONFIG, dict) and DB_CONFIG.get("password"):
-        return DB_CONFIG["password"]
-    return os.getenv("POSTGRES_PASSWORD") or os.getenv("AIRFLOW__DATABASE__PASSWORD") or "admin123"
-
 def _pg_attach_string() -> str:
     """Construit la chaîne de connexion DSN pour attacher PostgreSQL dans DuckDB.
 
-    Ouvre une connexion psycopg2 temporaire pour extraire les paramètres DSN,
+    Ouvre une connexion psycopg2 temporaire pour extraire les paramètres DSN
     puis la ferme immédiatement.
+    
+    Pourquoi ne pas construire la string directement depuis DB_CONFIG ?
+    On pourrait, mais get_dsn_parameters() garantit que les paramètres sont ceux réellement utilisés par la connexion active
 
     Returns:
         str: Chaîne de connexion au format DuckDB ATTACH (dbname user password host port).
     """
     conn = get_db_connection()
     try:
-        p = conn.get_dsn_parameters()
+        p = conn.get_dsn_parameters() #get_dsn_parameters() ne retourne jamais le mot de passe par sécurité 
         return (
             f"dbname={p['dbname']} user={p['user']} "
-            f"password={_pg_password()} host={p['host']} port={p['port']}"
+            f"password={DB_CONFIG['password']} host={p['host']} port={p['port']}"
         )
     finally:
         conn.close()
 
 def _open_duck() -> duckdb.DuckDBPyConnection:
+    """ATTACH permet à DuckDB de monter PostgreSQL comme 
+    si c'était sa propre base
+    Sans ATTACH : DuckDB ne connaît pas PostgreSQL
+    
+    Returns:
+        duckdb.DuckDBPyConnection: Connexion DuckDB configurée avec PostgreSQL
+            accessible via le préfixe 'pg' (ex: SELECT * FROM pg.products_raw).
+    """
     os.makedirs("/tmp/duckdb_spill", exist_ok=True)
     con = duckdb.connect(
         database=":memory:",
@@ -109,8 +109,8 @@ def _open_duck() -> duckdb.DuckDBPyConnection:
         }
     )
     con.execute("SET memory_limit='4GB'")
-    con.execute("SET temp_directory='/tmp/duckdb_spill'")
-    con.execute("INSTALL postgres; LOAD postgres")
+    con.execute("SET temp_directory='/tmp/duckdb_spill'") #si RAM pleine → écrit sur disque (dans tmp les calucls intermédiaires)
+    con.execute("INSTALL postgres; LOAD postgres") #installer l 'extension PostgreSQL dans DuckDB
     con.execute(f"ATTACH '{_pg_attach_string()}' AS pg (TYPE POSTGRES)")
     return con
 
@@ -139,7 +139,7 @@ def _bulk_settings(conn, params: list[str]) -> None:
 
 # CONTRAINTES — helpers (products_raw uniquement)
 
-PRODUCTS_CONSTRAINT  = "uq_products_raw_code_updated"
+PRODUCTS_CONSTRAINT  = "products_raw_code_updated_at_key"
 PRODUCTS_UNIQUE_COLS = ["code", "updated_at"]
 
 def _drop_products_constraint(conn) -> bool:
@@ -149,6 +149,9 @@ def _drop_products_constraint(conn) -> bool:
     'products_raw_code_updatedat_uidx' s'ils existent, pour permettre
     les insertions bulk sans vérification de doublon à chaque ligne.
     La contrainte est recréée après le seed via _recreate_products_constraint().
+    
+    pg_constraint stocke les tables non pas par leur nom mais par leur OID
+    ::regclass est un cast de type PostgreSQL. Il convertit un nom de table (texte) en son OID correspondant pour pouvoir le comparer à conrelid
 
     Args:
         conn: Connexion psycopg2 active.
@@ -179,17 +182,19 @@ def _drop_products_constraint(conn) -> bool:
 def _recreate_products_constraint(conn) -> None:
     """Déduplique products_raw puis recrée la contrainte d'unicité (code, updated_at).
 
-    Supprime d'abord les doublons en conservant le ctid le plus récent pour chaque
-    paire (code, updated_at), puis recrée la contrainte UNIQUE. Appelée après
+    Supprime d'abord les doublons en conservant le ctid (ctid est un identifiant interne PostgreSQL qui représente l'adresse 
+    physique exacte d'une ligne sur le disque : ctid plus grand = ligne insérée plus tard)
+    le plus récent pour chaque paire (code, updated_at), puis recrée la contrainte UNIQUE. Appelée après
     la fin de tous les inserts du seed pour garantir l'intégrité des données.
 
     Args:
         conn: Connexion psycopg2 active.
     """
     with conn.cursor() as cur:
+        #auto joiture
         cur.execute("""
             DELETE FROM products_raw a
-            USING products_raw b
+            USING products_raw b  
             WHERE a.ctid < b.ctid
               AND a.code = b.code
               AND a.updated_at = b.updated_at
@@ -209,8 +214,8 @@ def _prices_expr(col: str, source_cols: set[str]) -> str:
     """Génère l'expression SQL DuckDB pour mapper une colonne source vers prices_raw.
 
     Gère les colonnes calculées (_source_url, inserted_at, _ingestion_run_id),
-    les colonnes absentes de la source (NULL), et les castings typés
-    (BIGINT, DOUBLE, BOOLEAN, DATE, TIMESTAMP). Les colonnes texte subissent
+    , et les castings typés(BIGINT, DOUBLE, BOOLEAN, DATE, TIMESTAMP). 
+    Les colonnes texte subissent
     un nettoyage des caractères NUL (chr(0)).
 
     Args:
@@ -224,10 +229,8 @@ def _prices_expr(col: str, source_cols: set[str]) -> str:
         return f"'{URL_PRICES}' AS _source_url"
     if col == "inserted_at":
         return "CURRENT_TIMESTAMP AS inserted_at"
-    if col == "_ingestion_run_id":
+    if col == "_ingestion_run_id":  #UUID = identifiant unique universel. uuid4() en génère un aléatoire.
         return f"'{uuid.uuid4()}' AS _ingestion_run_id"
-    if col not in source_cols:
-        return f"NULL::VARCHAR AS {col}"
     if col in PRICES_INT_COLS:
         return f"TRY_CAST({col} AS BIGINT) AS {col}"
     if col in PRICES_NUMERIC_COLS:
@@ -238,7 +241,7 @@ def _prices_expr(col: str, source_cols: set[str]) -> str:
         return f"TRY_CAST({col} AS DATE) AS {col}"
     if col in PRICES_TS_COLS:
         return f"TRY_CAST({col} AS TIMESTAMP) AS {col}"
-    return f"CASE WHEN {col} IS NULL THEN NULL ELSE REPLACE(CAST({col} AS VARCHAR), chr(0), '') END AS {col}"
+    return f"CASE WHEN {col} IS NULL THEN NULL ELSE REPLACE(CAST({col} AS VARCHAR), chr(0), '') END AS {col}" #chr(0): car nul 
 
 # EXPRESSIONS SQL — products
 
@@ -264,7 +267,7 @@ def _products_expr(col: str, source_cols: set[str], source_url: str,
 
     Couvre trois catégories :
     - Colonnes techniques calculées (data_source, _source_url, _ingestion_run_id,
-      inserted_at, created_api, updated_api, updated_at) : valeurs injectées sans référence source.
+      inserted_at, created_api, updated_api, updated_at) 
     - Colonne extra_data : sérialisation JSON des colonnes non-communes présentes dans la source.
     - Colonnes communes : casting typé (INTEGER, DOUBLE, BOOLEAN, BIGINT) ou nettoyage texte VARCHAR.
 
@@ -287,6 +290,8 @@ def _products_expr(col: str, source_cols: set[str], source_url: str,
     if col == "inserted_at":
         return "CURRENT_TIMESTAMP AS inserted_at"
     if col == "created_api":
+        #to_timestamp nombre de secondes (timestamp UNIX) en date lisible  retourne un type TIMESTAMPTZ (avec timezone) :
+        #c'est pourquoi on fait ::TIMESTAMP pour convertir en TIMESTAMP simple (sans timezone) qui est le type de created_api dans PostgreSQL
         return """CASE WHEN TRY_CAST(created_t AS BIGINT) IS NOT NULL
                        THEN to_timestamp(TRY_CAST(created_t AS BIGINT))::TIMESTAMP
                        ELSE NULL END AS created_api"""
@@ -297,6 +302,7 @@ def _products_expr(col: str, source_cols: set[str], source_url: str,
                        THEN to_timestamp(TRY_CAST(last_modified_t AS BIGINT))::TIMESTAMP
                        ELSE NULL END AS updated_api"""
     if col == "updated_at":
+        #COALESCE = prend le premier non-NULL
         return """COALESCE(
                     CASE WHEN TRY_CAST(last_updated_t AS BIGINT) IS NOT NULL
                          THEN to_timestamp(TRY_CAST(last_updated_t AS BIGINT))::TIMESTAMP END,
@@ -341,7 +347,6 @@ def build_extra_cols(source_cols: set[str]) -> list[str]:
 
     Exclut les colonnes communes (PRODUCTS_COMMON_COLS), techniques (PRODUCTS_TECHNICAL_COLS)
     et 'code' pour ne conserver que les colonnes spécifiques à chaque source
-    (ex: colonnes nutritionnelles spécifiques à Open Food Facts).
 
     Args:
         source_cols: Ensemble des colonnes disponibles dans le fichier source.
@@ -355,12 +360,17 @@ def build_extra_cols(source_cols: set[str]) -> list[str]:
 # INSERT — prices
 
 def _insert_prices(parquet_path: str, already_loaded: int) -> int:
-    total = pq.ParquetFile(parquet_path).metadata.num_rows
+    #total = pq.ParquetFile(parquet_path).metadata.num_rows
+    total = con_light.execute(
+    f"SELECT num_rows FROM parquet_metadata('{parquet_path}')"
+    ).fetchone()[0]
     if already_loaded >= total:
         logger.info("✅ prices_raw déjà complet → skip")
         return 0
 
-    con_light = duckdb.connect(":memory:")
+    #récupérer les noms des colonnes du parquet avec DESCRIBE,
+    #commande DuckDB qui inspecte le schéma d'un SELECT sans exécuter les données
+    con_light = duckdb.connect(":memory:")  #connexion légère pour inférer le schéma sans attacher PostgreSQL ni charger les données
     try:
         desc = con_light.execute(
             f"DESCRIBE SELECT * FROM read_parquet('{parquet_path}')"
@@ -373,7 +383,7 @@ def _insert_prices(parquet_path: str, already_loaded: int) -> int:
 
     con = _open_duck()
     try:
-        # ── Étape 1 ──
+        # ── Étape 1 ── on besoin de id et updated pour savoir si un prix existe déjà 
         con.execute("""
             CREATE TEMP TABLE existing_ids AS
             SELECT id AS ex_id, updated AS ex_updated
@@ -414,6 +424,7 @@ def _insert_products_parquet_file(part_path: str, source_url: str, data_source: 
     """
     con = duckdb.connect(":memory:")
     desc = con.execute(f"DESCRIBE SELECT * FROM read_parquet('{part_path}')").fetchall()
+    n = con.execute(f"SELECT num_rows FROM parquet_metadata('{part_path}')").fetchone()[0]
     con.close()
 
     source_cols = {r[0] for r in desc}
@@ -429,13 +440,12 @@ def _insert_products_parquet_file(part_path: str, source_url: str, data_source: 
             FROM read_parquet('{part_path}') src
             WHERE src.code IS NOT NULL
         """)
-        n = pq.ParquetFile(part_path).metadata.num_rows
         logger.info(f"  ✅ {Path(part_path).name} : {n:,} lignes")
         return n
     finally:
         con.close()
 
-# INSERT — products jsonl (fichier unique)
+# INSERT — products jsonl 
 
 def _insert_products_jsonl_file(jsonl_path: str, source_url: str, data_source: str) -> int:
     """Insère un fichier JSONL de produits dans products_raw via DuckDB → PostgreSQL.
@@ -446,7 +456,7 @@ def _insert_products_jsonl_file(jsonl_path: str, source_url: str, data_source: s
     colonne par colonne.
 
     Args:
-        jsonl_path: Chemin absolu vers le fichier JSONL (newline-delimited).
+        jsonl_path: Chemin absolu vers le fichier JSONL .
         source_url: URL d'origine du dataset (injectée dans _source_url).
         data_source: Identifiant de la source ('beauty', 'other').
 
@@ -469,7 +479,8 @@ def _insert_products_jsonl_file(jsonl_path: str, source_url: str, data_source: s
         desc = []
     finally:
         con.close()
-
+        
+    #r0 contient nom de la colonne
     source_cols = {r[0] for r in desc}
 
     if not source_cols or source_cols == {"json"}:
@@ -502,7 +513,7 @@ def _insert_products_jsonl_file(jsonl_path: str, source_url: str, data_source: s
         con.close()
 
 def _insert_products_jsonl_raw(jsonl_path: str, source_url: str, data_source: str) -> int:
-    # ── 1. Inférer source_cols depuis le premier objet lisible ──
+    # ── 1. Inférer source_cols depuis le premier objet lisible 
     source_cols: set[str] = set()
     try:
         with open(jsonl_path, "r", errors="ignore") as f:
@@ -510,7 +521,7 @@ def _insert_products_jsonl_raw(jsonl_path: str, source_url: str, data_source: st
                 line = line.strip()
                 if not line:
                     continue
-                obj = json.loads(line)
+                obj = json.loads(line) # parse le JSON dans dict
                 source_cols = set(obj.keys())
                 break
     except Exception as e:
@@ -532,7 +543,7 @@ def _insert_products_jsonl_raw(jsonl_path: str, source_url: str, data_source: st
         f"SELECT {json_extracts} FROM read_ndjson('{jsonl_path}', ignore_errors=true)"
         if json_extracts
         else f"SELECT * FROM read_ndjson('{jsonl_path}', ignore_errors=true)"
-    )
+    )   
 
     # ── 4. Insérer ──────────────────────────────────────────────
     con = _open_duck()
@@ -580,7 +591,7 @@ def seed_prices(**context) -> None:
     """Tâche Airflow : charge les prix Open Prices dans prices_raw.
 
     Vérifie d'abord le nombre de lignes déjà présentes pour éviter un rechargement complet.
-    Active les paramètres bulk PostgreSQL avant l'insertion et les restaure ensuite.
+    L'insertion est déléguée à _insert_prices() qui utilise DuckDB en interne.
     Log le statut, le nombre de lignes et la durée en sortie de tâche.
 
     Args:
@@ -594,14 +605,14 @@ def seed_prices(**context) -> None:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM prices_raw")
             already = cur.fetchone()[0]
-        _bulk_settings(conn, _BULK_ON)
+        #_bulk_settings(conn, _BULK_ON)
         conn.close()
 
         rows = _insert_prices(PARQUET_PATH_PRICES, already)
 
-        conn = get_db_connection()
-        _bulk_settings(conn, _BULK_OFF)
-        conn.close()
+        #conn = get_db_connection()
+        #_bulk_settings(conn, _BULK_OFF)
+        #conn.close()
         return rows
 
     _run_seed_task("seed_prices", _run)
@@ -696,7 +707,7 @@ def seed_other(**context) -> None:
         return rows
 
     _run_seed_task("seed_other", _run)
-
+    
 
 # SEED — currency (taux de change ECB + IMF)
 
@@ -721,7 +732,7 @@ def _inserer_taux(rows: list[dict], conn) -> int:
     if not rows:
         return 0
     df = pd.DataFrame(rows)
-    df = df.sort_values("source", ascending=False)
+    df = df.sort_values("source", ascending=True)
     df = df.drop_duplicates(subset=["rate_date", "currency"], keep="first")
     tuples = [
         tuple(x) for x in df[["rate_date","currency","rate_to_eur","source","frequency"]].to_numpy()
@@ -738,7 +749,7 @@ def _inserer_taux(rows: list[dict], conn) -> int:
                     frequency   = EXCLUDED.frequency
                 WHERE exchange_rates_raw.source != 'ECB'
             """,
-            tuples,
+            tuples, # la liste de tuples à insérer
             page_size=CURRENCY_PAGE_SIZE,
         )
     conn.commit()
@@ -746,7 +757,7 @@ def _inserer_taux(rows: list[dict], conn) -> int:
 
 def _charger_ecb(conn, date_min=None) -> tuple[int, set]:
     """Télécharge et charge les taux de change historiques de la BCE dans exchange_rates_raw.
-    Télécharge le ZIP historique ECB (eurofxref-hist.zip), pivote le CSV wide→long,
+    Télécharge le ZIP historique ECB, pivote le CSV wide→long,
     filtre sur TARGET_CURRENCIES et insère par batch de 10 000 lignes.
 
     Args:
@@ -758,27 +769,41 @@ def _charger_ecb(conn, date_min=None) -> tuple[int, set]:
     """
     resp = requests.get(ECB_ZIP_URL, timeout=120)
     resp.raise_for_status()
+    
+    # resp.content :  les bytes bruts du ZIP téléchargé (données binaires illisibles)
+    # io.BytesIO(...) : transforme ces bytes en "faux fichier virtuel" en RAM
+    # (zipfile ne peut pas lire des bytes bruts directement)
+    # zipfile.ZipFile(...) : ouvre ce faux fichier comme un vrai ZIP
     with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+        # z.namelist() : liste tous les fichiers qui sont dans le ZIP
         name = next(n for n in z.namelist() if n.endswith(".csv"))
         df = pd.read_csv(z.open(name))
+        
     df.columns = [c.strip() for c in df.columns]
-    df.rename(columns={"Date": "rate_date"}, inplace=True)
+    df.rename(columns={"Date": "rate_date"}, inplace=True) #pour correspondre au nom de la colonne en base
+    #Convertit le texte en Timestamp pandas + garde uniquement la date sans l'heure
     df["rate_date"] = pd.to_datetime(df["rate_date"]).dt.date
+    
     if date_min:
         df = df[df["rate_date"] >= date_min]
+        
     currency_cols = [c for c in df.columns if c != "rate_date"]
+    #pivot de format wide (une colonne par devise) à long (une ligne par devise) :
     df_long = df.melt(id_vars=["rate_date"], value_vars=currency_cols,
                       var_name="currency", value_name="rate_to_eur")
+    
     df_long["currency"]    = df_long["currency"].str.strip().str.upper()
     df_long["rate_to_eur"] = pd.to_numeric(df_long["rate_to_eur"], errors="coerce")
-    df_long = df_long.dropna()
+    df_long = df_long.dropna() # supprimer les lignes qui contiennent un NaN 
+    
     df_long = df_long[df_long["currency"].isin(TARGET_CURRENCIES)]
     df_long["source"]    = "ECB"
     df_long["frequency"] = "daily"
     ecb_currencies = set(df_long["currency"].unique())
-    rows = df_long.to_dict("records")
+    
+    rows = df_long.to_dict("records") # liste de dicts
     inserted = sum(
-        _inserer_taux(rows[i:i+10_000], conn)
+        _inserer_taux(rows[i:i+10_000], conn) #envoie par tranches de 10 000
         for i in range(0, len(rows), 10_000)
     )
     logger.info(f"ECB OK: {inserted:,} lignes")
@@ -824,10 +849,11 @@ def _charger_imf(conn, ecb_currencies: set, date_min=None) -> int:
         WHERE currency = 'USD' AND source = 'ECB'
         GROUP BY month_start
     """, conn)
+    #PostgreSQL retourne les timestamps avec timezone, Pandas ne peut pas fusionner une colonne avec timezone avec une colonne sans timezone
     usd["month_start"] = pd.to_datetime(usd["month_start"]).dt.tz_localize(None)
-    df["month_start"]  = df["rate_date"].dt.to_period("M").dt.to_timestamp()
+    df["month_start"]  = df["rate_date"].dt.to_period("M").dt.to_timestamp() #Résultat : chaque date IMF devient le 1er de son mois
     df = df.merge(usd, on="month_start", how="left")
-    df["rate_to_eur"] = df["usd_to_eur"] * df["rate_usd"]
+    df["rate_to_eur"] = df["usd_to_eur"] * df["rate_usd"] # usd_to_eur a été fusionnée dans df
     df = df.dropna(subset=["rate_to_eur"])
     df["source"]    = "IMF"
     df["frequency"] = "monthly"
@@ -857,12 +883,12 @@ def _charger_imf(conn, ecb_currencies: set, date_min=None) -> int:
 
 def seed_currency(**context) -> None:
     """Tâche Airflow : charge les taux de change ECB + FMI dans exchange_rates_raw.
-    Skip si exchange_rates_raw est déjà peuplé (idempotent). En premier seed,
-    charge d'abord les taux BCE (quotidiens, prioritaires), puis complète
+    Skip si exchange_rates_raw est déjà peuplé . 
+    En premier, charge d'abord les taux BCE (quotidiens, prioritaires), puis complète
     avec les taux FMI (mensuels) pour les devises non couvertes par BCE.
 
     Args:
-        **context: Contexte Airflow injecté par PythonOperator (non utilisé directement).
+        **context: Contexte Airflow injecté par PythonOperator .
 
     Raises:
         Exception: Toute erreur de chargement est loggée puis re-raise pour faire échouer la tâche.

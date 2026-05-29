@@ -45,7 +45,7 @@ const STRATEGY_META = {
     tagBg: '#FFFBEB',
     hint: 'Balanced approach follows competitors without leading.',
   },
-  ALIGNED: {
+  MARKET_ALIGNED: {
     icon: <span>🎯</span>,
     iconColor: '#1E3A5F',
     iconBg: '#F4F7FF',
@@ -212,7 +212,6 @@ export default function StrategyConfigurationPage() {
   useEffect(() => {
     if (!scope) {
       console.warn('[StrategyConfigurationPage] No scope found in location.state.');
-      // Rediriger vers ProductScopePage si scope manquant
       navigate('/pricing-rules/scope');
     }
   }, [scope]);
@@ -221,18 +220,12 @@ export default function StrategyConfigurationPage() {
     useLLMSuggestion(scope);
 
   useEffect(() => {
-    // getStrategies() → GET /api/v1/strategies
-    // Retourne déjà : stratégies système + stratégies custom (is_custom=True) de l'utilisateur.
-    // Les entrées is_custom=False (historique interne) sont filtrées côté backend.
-    // On n'appelle PAS getUserStrategies() séparément pour éviter les doublons.
     Promise.all([
       getStrategies(),
       getRules({ is_system: true }),
       getRules({ is_system: false }),
     ])
       .then(([sRes, sysRulesRes, customRulesRes]) => {
-        // Le backend renvoie source: "system" ou source: "user" + is_custom: true/false
-        // On affiche tout tel quel — pas de filtre supplémentaire nécessaire ici.
         setStrategies(sRes.strategies || []);
         setSystemRules(sysRulesRes.rules || []);
         setCustomRules(customRulesRes.rules || []);
@@ -242,10 +235,8 @@ export default function StrategyConfigurationPage() {
   }, []);
 
   const selectedStrategy       = strategies.find((s) => s.id === selectedId);
-  // Carte système "CUSTOM" (template pour créer une nouvelle stratégie custom)
   const isNewCustom            = selectedStrategy?.name?.toUpperCase() === 'CUSTOM'
                                  && selectedStrategy?.source === 'system';
-  // Stratégie custom existante de l'utilisateur (source: "user", is_custom: true)
   const isExistingUserStrategy = selectedStrategy?.source === 'user' && selectedStrategy?.is_custom === true;
 
   const customCoeffSum = React.useMemo(() => {
@@ -263,7 +254,6 @@ export default function StrategyConfigurationPage() {
     const s = strategies.find((x) => x.id === id);
     setShowCoeffError(false);
 
-    // Clic sur la carte système "CUSTOM"
     if (s?.name?.toUpperCase() === 'CUSTOM' && s?.source === 'system') {
       if (selectedId === id && pendingCustomMeta) {
         setSelectedId(null);
@@ -279,7 +269,6 @@ export default function StrategyConfigurationPage() {
       return;
     }
 
-    // Désélection
     if (selectedId === id) {
       setSelectedId(null);
       setDetail(null);
@@ -294,9 +283,19 @@ export default function StrategyConfigurationPage() {
     setPendingCustomMeta(null);
 
     try {
-      // Stratégie custom user → getUserStrategy, sinon getStrategy (système)
       const data = s?.source === 'user' ? await getUserStrategy(id) : await getStrategy(id);
-      setDetail(data);
+
+      const allRules = [...systemRules, ...customRules];
+      const enrichedRules = (data.rules || []).map((rule) => {
+        const found = allRules.find((r) => r.id === (rule.rule_id || rule.id));
+        return {
+          ...rule,
+          name:        rule.name        || found?.name        || rule.rule_id || rule.id,
+          description: rule.description || found?.description || '',
+        };
+      });
+
+      setDetail({ ...data, rules: enrichedRules });
       setTimeout(() => rulesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
     } catch (e) {
       setError(e.message);
@@ -326,12 +325,78 @@ export default function StrategyConfigurationPage() {
     });
   };
 
-  const handleApplyAISuggestion = async () => {
-    const recommendedName = aiSuggestion?.recommended_strategy_name || aiSuggestion?.recommendedStrategyName;
-    if (!recommendedName) return;
-    const matched = strategies.find((s) => s.name?.toUpperCase() === recommendedName.toUpperCase());
-    if (!matched) { setError(`Suggested strategy "${recommendedName}" was not found.`); return; }
-    await selectStrategy(matched.id);
+  // ── Apply AI suggestion ───────────────────────────────────────────────────────
+
+  const handleApplyAISuggestion = () => {
+    if (!aiSuggestion) return;
+
+    const recommendedName = aiSuggestion.recommended_strategy_name || aiSuggestion.recommendedStrategyName;
+    // Vérifier si les rule_ids correspondent exactement à une stratégie système
+    const SYSTEM_STRATEGY_RULES = {
+      's1': new Set(['r1', 'r2', 'r3']),   // adapte selon ta DB
+      's2': new Set(['r1', 'r3', 'r6']),   // adapte selon ta DB
+      's3': new Set(['r4', 'r2', 'r6']),   // adapte selon ta DB
+    };
+const llmRuleIds = new Set(
+  (aiSuggestion.rules || []).filter(r => r.rule_id).map(r => r.rule_id)
+);
+const matchesSystem = Object.values(SYSTEM_STRATEGY_RULES).some(sysSet =>
+  sysSet.size === llmRuleIds.size && [...sysSet].every(id => llmRuleIds.has(id))
+);
+const isCustom = !matchesSystem;
+
+    // Construire les custom_rules depuis les rules LLM
+    // Chaque rule LLM a : rule_id, rule_name, coefficient, params, is_new
+    const llmCustomRules = (aiSuggestion.rules || []).map((r, idx) => ({
+      rule_id:     r.rule_id || r.custom_rule_code || `llm_custom_${idx}`,
+      coefficient: r.coefficient,
+      name:        r.rule_name || r.rule_id || `Rule ${idx + 1}`,
+      description: r.rule_description || r.description || '',
+      active:      true,
+      params:      r.params || {},
+      formula:     r.rule_formula || null,
+    }));
+
+    // Nom auto généré depuis le contexte LLM
+    const scopeLabel = (
+      aiSuggestion.context_used?.categories?.[0]
+      || aiSuggestion.context_used?.brands?.[0]
+      || 'Strategy'
+    );
+    const autoMeta = {
+      name:        `AI ${recommendedName} — ${scopeLabel}`,
+      description: aiSuggestion.explanation || '',
+    };
+
+    if (isCustom) {
+      // ── CUSTOM : naviguer directement avec toutes les rules LLM ──────────
+      navigate('/pricing-rules/configure/new-custom', {
+        state: {
+          is_new_custom: true,
+          custom_meta:   autoMeta,
+          custom_rules:  llmCustomRules,   // ← toutes les rules LLM, params inclus
+          llm_rules:     aiSuggestion.rules, // ← pour pré-remplir les params dans RuleConfig
+          scope,
+        },
+      });
+    } else {
+      // ── SYSTÈME : trouver la stratégie correspondante et naviguer ─────────
+      const matched = strategies.find((s) =>
+        s.name?.toUpperCase() === recommendedName?.toUpperCase()
+      );
+      if (!matched) {
+        setError(`Strategy "${recommendedName}" not found.`);
+        return;
+      }
+      navigate(`/pricing-rules/configure/${matched.id}`, {
+        state: {
+          system_strategy_id: matched.id,
+          llm_rules:          aiSuggestion.rules, // ← params LLM pour pré-remplir RuleConfig
+          scope,
+        },
+      });
+    }
+
     setAiDismissed(true);
   };
 
@@ -343,7 +408,6 @@ export default function StrategyConfigurationPage() {
 
     if (!selectedStrategy) return;
 
-    // Stratégie custom existante → page rule config avec user_strategy_id
     if (isExistingUserStrategy) {
       navigate(`/pricing-rules/configure/${selectedStrategy.id}`, {
         state: { user_strategy_id: selectedStrategy.id, scope },
@@ -351,7 +415,6 @@ export default function StrategyConfigurationPage() {
       return;
     }
 
-    // Stratégie système (preset) → page rule config avec system_strategy_id
     if (!isNewCustom) {
       navigate(`/pricing-rules/configure/${selectedStrategy.id}`, {
         state: { system_strategy_id: selectedStrategy.id, scope },
@@ -359,17 +422,15 @@ export default function StrategyConfigurationPage() {
       return;
     }
 
-    // ── Nouvelle stratégie custom ────────────────────────────────────────────
+    // ── Nouvelle stratégie custom manuelle ───────────────────────────────────
     const ids = [...customSelected];
     if (ids.length === 0) {
       setError('Please select at least one rule.');
       return;
     }
 
-    // Répartition équitable des coefficients
     const base = Math.floor((1 / ids.length) * 10000) / 10000;
     let rem    = 1;
-    // Inclure le nom et description de chaque rule pour éviter d'afficher les IDs
     const allAvailableRules = [...systemRules, ...customRules];
     const rules = ids.map((ruleId, i) => {
       const coeff    = i === ids.length - 1 ? Math.round(rem * 10000) / 10000 : base;
@@ -531,7 +592,7 @@ export default function StrategyConfigurationPage() {
                 <RuleCheckCard
                   key={rule.rule_id || rule.id}
                   rule={rule}
-                  badge={AGG_BADGE[rule.aggregation_function] || AGG_BADGE.none}
+                  badge={AGG_BADGE[rule.aggregation_function] || null}
                   selected={false}
                   onToggle={() => {}}
                 />
@@ -549,7 +610,6 @@ export default function StrategyConfigurationPage() {
                 fontSize: 12, color: '#166534', fontWeight: 600,
                 display: 'flex', alignItems: 'center', gap: 8,
               }}>
-                <span>✅</span>
                 <span>
                   {customSelected.size} rule{customSelected.size !== 1 ? 's' : ''} selected —
                   coefficients will be split equally (1/{customSelected.size} each) and can be
@@ -571,7 +631,7 @@ export default function StrategyConfigurationPage() {
                     <RuleCheckCard
                       key={rule.id}
                       rule={rule}
-                      badge={AGG_BADGE[rule.aggregation_function] || AGG_BADGE.none}
+                      badge={AGG_BADGE[rule.aggregation_function] || null}
                       selected={customSelected.has(rule.id)}
                       onToggle={() => toggleCustomRule(rule.id)}
                       isUserRule={false}
@@ -594,7 +654,7 @@ export default function StrategyConfigurationPage() {
                     <RuleCheckCard
                       key={rule.id}
                       rule={rule}
-                      badge={AGG_BADGE[rule.aggregation_function] || AGG_BADGE.none}
+                      badge={AGG_BADGE[rule.aggregation_function] || null}
                       selected={customSelected.has(rule.id)}
                       onToggle={() => toggleCustomRule(rule.id)}
                       isUserRule

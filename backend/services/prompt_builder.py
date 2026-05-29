@@ -96,7 +96,7 @@ def _describe_real_position(
         )
     if price_gap_pct < GAP_MODERATE_BELOW:
         return (
-            f"BELOW market by {price_gap_pct}% "
+            f"BELOW market by {abs(price_gap_pct):.1f}% "
             f"({own_avg}€ vs {market_avg}€ market)"
         )
     return (
@@ -160,9 +160,9 @@ def build_prompt(
     cat_label   = ", ".join(categories) if categories else "All"
     brand_label = ", ".join(brands) if brands else "All"
 
-    price_gap_pct  = get_price_gap_pct(own, market)
-    real_position  = _describe_real_position(own, market, price_gap_pct)
-    rules_text     = _format_rules_catalog(rules_catalog)
+    price_gap_pct   = get_price_gap_pct(own, market)
+    real_position   = _describe_real_position(own, market, price_gap_pct)
+    rules_text      = _format_rules_catalog(rules_catalog)
     strategies_text = _format_strategies_catalog(strategies_catalog)
 
     return f"""
@@ -199,7 +199,12 @@ AVAILABLE SYSTEM STRATEGIES:
 {strategies_text}
 
 MANDATORY STRATEGY SELECTION RULES:
-1. Prefer a system strategy whenever possible.
+1. Prefer a system strategy (s1/s2/s3) whenever possible.
+   Each system strategy has a FIXED rule set — you MUST use EXACTLY those rules, no more, no less:
+     - s1 AGGRESSIVE    : r1, r2, r3
+     - s2 COMPETITIVE   : r1, r3, r6
+     - s3 MARKET_ALIGNED: r4, r2, r6
+   Do NOT add or remove rules from a system strategy set.
 2. Choose AGGRESSIVE (s1) mainly if:
    - the store is below market by more than 15%, AND
    - there are at least 3 active competitors.
@@ -213,12 +218,13 @@ MANDATORY STRATEGY SELECTION RULES:
    - the combination of existing rule_ids does not match any system strategy, OR
    - at least one custom rule is proposed, OR
    - the recommendation requires business logic not covered by existing rules.
+   For CUSTOM: use between 2 and 4 rules, r1 is optional.
 
 MANDATORY CONSTRAINTS:
 1.  Coefficient sum must equal exactly 1.0.
 2.  Each coefficient must be > 0.
 3.  Parameters must stay within allowed ranges for existing rules.
-4.  Use minimum 2 and maximum 4 rules.
+4.  For system strategies (s1/s2/s3): use EXACTLY the rule set listed above — no additions, no removals.
 5.  Return ONLY valid JSON in English.
 6.  Base the recommendation primarily on real competitive position versus market average price.
 7.  If the store is significantly below market, avoid recommendations that reduce prices further
@@ -234,6 +240,12 @@ MANDATORY CONSTRAINTS:
     - params (use {{}} if no parameters are needed)
 12. Prefer existing rules whenever they are sufficient.
 13. Do not invent a custom rule if an existing rule already covers the same intent.
+14. For each existing rule, specify params with chosen values (not just defaults).
+    If defaults are appropriate, still include them explicitly in the params object.
+15. CRITICAL — In the 'explanation' field, you MUST use the EXACT strategy name from
+    'recommended_strategy_name'. NEVER mention any other strategy name in any text field.
+    ❌ BAD:  recommended_strategy_name="MARKET_ALIGNED", explanation="The AGGRESSIVE strategy..."
+    ✅ GOOD: recommended_strategy_name="MARKET_ALIGNED", explanation="The MARKET_ALIGNED strategy..."
 
 RESPONSE FORMAT — return ONLY this JSON, no extra text:
 {{

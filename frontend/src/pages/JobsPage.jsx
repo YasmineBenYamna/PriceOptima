@@ -116,12 +116,12 @@ function Timeline({ steps }) {
 function downloadCSV(job, detail) {
   const rows = detail?.price_changes || [];
   if (!rows.length) return;
-  const header = ['EAN', 'Prix Original (€)', 'Prix Final (€)', 'Variation (€)', 'Variation (%)', 'Règle déclenchée'];
+  const header = ['EAN', 'Original Price (€)', 'Final Price (€)', 'Variation (€)', 'Variation (%)', 'Triggered Strategy'];
   const lines  = rows.map(r => [
     r.product_id, r.old_price, r.new_price,
     (r.new_price - r.old_price).toFixed(4),
     r.change_pct,
-    r.rule_triggered || 'N/A',
+    r.strategy_triggered || 'N/A',
   ].join(','));
   const csv  = [header.join(','), ...lines].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -304,10 +304,9 @@ export default function JobsPage() {
                           color:      job.average_delta < 0 ? C.success.text : job.average_delta > 0 ? C.danger.text : C.textFaint,
                           fontWeight: 600,
                         }}>
-                          {job.average_delta > 0 ? '+' : ''}{job.average_delta?.toFixed(2)}% avg. change
                         </span>
                       )}
-                      <span>{new Date(job.created_at).toLocaleString('en-GB')}</span>
+                      <span>{new Date(job.created_at + 'Z').toLocaleString('fr-FR', { timeZone: 'Africa/Tunis', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                   </div>
 
